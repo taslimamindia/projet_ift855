@@ -1,0 +1,17 @@
+numpy
+pandas
+requests
+beautifulsoup4
+langchain-community
+langchain-openai
+tiktoken
+faiss-cpu
+sentence-transformers
+Flask
+Spacy
+ipywidgets
+evaluate
+nltk
+rouge_score
+absl-py
+bert-score
