@@ -2,81 +2,45 @@ from sentence_transformers import SentenceTransformer
 from nltk.tokenize import sent_tokenize, word_tokenize
 import nltk
 
+from outils.dataset import Data
 
-def create_index_for_documents(documents):
-    """ Crée un index pour les documents.
 
-    Args:
-        documents (dict): Dictionnaire avec les URLs comme clés et le texte extrait comme valeurs.
-    """
+class Embeddings:
+    def __init__(self, data:Data):
+        self.data = data
+        nltk.download('punkt_tab')
 
-    documents_indexed = {}
-    indexed_to_url = {}
+    def chunking(self):
+        """Split the documents into smaller passages.
+        """
 
-    for i, url in enumerate(documents):
-        documents_indexed[i] = documents[url]
-        indexed_to_url[i] = url
-    
-    return documents_indexed, indexed_to_url    
+        self.data.chunks = []
+        self.data.sources = []
+        for doc_name, passages in self.data.documents.items():
+            for passage in passages:
+                self.data.chunks.append(passage)
+                self.data.sources.append(doc_name)
 
-def chunking(documents):
-    """
-        Divise les documents en passages plus petits. Et retourne les passages et leurs sources. 
-    """
+    def context_embeddings(self, model_name="paraphrase-multilingual-MiniLM-L12-v2"):
+        """Create embeddings for contexts.
 
-    chunks = []
-    sources = []
-    for doc_name, passages in documents.items():
-        for passage in passages:
-            chunks.append(passage)
-            sources.append(doc_name)
-    
-    return chunks, sources
+        Args:
+            model_name (str, optional): Embedding model name. 
+                Defaults to "paraphrase-multilingual-MiniLM-L12-v2".
+        """
 
-def create_embeddings(chunks, model_name):
-    """
-        crée des embeddings pour les passages.
-    """
-    
-    model = SentenceTransformer(model_name)
-    embeddings = model.encode(chunks)
-    return model, embeddings
+        self.data.model = SentenceTransformer(model_name)
+        self.data.embeddings = self.data.model.encode(self.data.chunks)
 
-def context_embeddings(chunks, model_name="paraphrase-multilingual-MiniLM-L12-v2"):
-    """
-        crée des embeddings pour les contextes.
+    def tokenize_text(self, text):
+        """Tokenize a text into sentences, then each sentence into words.
 
-    Args:
-        documents (dict): Dictionnaire avec les URLs comme clés et le texte extrait comme valeurs.
-        model_name (str, optional): Nom du modèle d'embeddings. Defaults to "paraphrase-multilingual-MiniLM-L12-v2".
-    """
-     
-    model, embeddings = create_embeddings(chunks, model_name=model_name)
+        Args:
+            text (str): Input text to tokenize.
 
-    return model, embeddings, chunks
-
-def create_chunks_and_index(documents):
-    """
-        Crée des passages et un index pour les documents.
-
-    Args:
-        documents (dict): Dictionnaire avec les URLs comme clés et le texte extrait comme valeurs.
-    """
-
-    documents_indexed, indexed_to_url = create_index_for_documents(documents)
-    chunks, sources = chunking(documents_indexed)
-
-    return chunks, sources, indexed_to_url, documents_indexed
-
-nltk.download('punkt_tab')
-
-def tokenize_text(text):
-    """
-    Tokenise un texte en phrases puis chaque phrase en mots.
-    Args:
-        text (str): Texte à tokeniser.
-    Returns:
-        list of list of str: Liste de phrases, chaque phrase étant une liste de mots.
-    """
-    sentences = sent_tokenize(text)
-    return [word_tokenize(sentence) for sentence in sentences]
+        Returns:
+            list of list of str: A list of sentences, where each sentence is represented 
+            as a list of tokenized words.
+        """
+        sentences = sent_tokenize(text)
+        return [word_tokenize(sentence) for sentence in sentences]
