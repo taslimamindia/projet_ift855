@@ -2,9 +2,14 @@ import spacy
 
 
 def split_text_into_paragraphs_spacy(texts):
-    """ Découpe un texte en paragraphes en utilisant spaCy pour la segmentation.
-    """
+    """Split a text into paragraphs using spaCy for segmentation.
 
+    Args:
+        texts (str): Input text to be split.
+
+    Returns:
+        list of str: List of sentences/paragraphs extracted from the text.
+    """
     try:
         nlp = spacy.load("fr_core_news_sm")
     except OSError:
@@ -20,16 +25,18 @@ def split_text_into_paragraphs_spacy(texts):
     docs = nlp(texts)
     return [sent.text for sent in docs.sents]
 
+
 def textTosentences(texts):
-    """ Découpe les textes en phrases en utilisant spaCy pour la segmentation.
+    """Split multiple texts into sentences using spaCy for segmentation.
 
     Args:
-        texts (dict): Dictionnaire avec les URLs comme clés et les textes comme valeurs.
-    """
+        texts (dict): Dictionary with URLs as keys and text strings as values.
 
+    Returns:
+        dict: Dictionary with URLs as keys and lists of sentences as values.
+    """
     texts_transformed = {}
     for url in texts.keys():
-        print(f"Processing {url}...")
         texts_transformed[url] = split_text_into_paragraphs_spacy(texts[url])
 
     return texts_transformed
