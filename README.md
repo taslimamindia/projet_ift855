@@ -1,14 +1,15 @@
-# projet_ift855
-Ce projet, réalisé dans le cadre d’un essai à l’Université de Sherbrooke, a pour objectif de mettre en place une approche MLOps complète. Il consiste à développer et déployer une intelligence artificielle capable de répondre aux questions des utilisateurs en s’appuyant sur des techniques de web crawling pour extraire et traiter automatiquement des informations pertinentes.
+# Project IFT855 | Université de Sherbrooke
 
-Le projet couvre l’ensemble du cycle de vie de la solution, incluant :
+This project, carried out as part of a research essay at the University of Sherbrooke, aims to implement a complete MLOps approach. Its objective is to develop and deploy an artificial intelligence system capable of answering user questions by leveraging web crawling techniques to automatically extract and process relevant information.
 
-L’acquisition et le prétraitement des données via web crawling.
+The project covers the full solution lifecycle, including:
 
-L’entraînement et la mise à jour du modèle d’IA.
+Data acquisition and preprocessing through web crawling.
 
-L’automatisation du pipeline MLOps pour l’intégration et le déploiement continus.
+Implementation of a Retrieval-Augmented Generation (RAG) system.
 
-La mise en production d’une API permettant aux utilisateurs d’interagir avec le système.
+Automation of the MLOps pipeline for continuous integration and deployment.
 
-Ce dépôt regroupe le code, la documentation et les configurations nécessaires à la reproduction et à l’évolution du projet.
+Deployment of an API enabling users to interact with the system.
+
+This repository contains the code, documentation, and configuration required to reproduce and further develop the project.
