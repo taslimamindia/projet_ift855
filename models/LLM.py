@@ -1,7 +1,8 @@
 from fireworks import LLM
+from outils.dataset import Data
 
 class Fireworks_LLM:
-    def __init__(self, model="llama4-maverick-instruct-basic", deployment_type="serverless", fireworks_api_key="fw_3Zg5B7CUKag67HsSZjCwwbwx"):
+    def __init__(self, data:Data, model="llama4-maverick-instruct-basic", deployment_type="serverless"):
         """Connect to an LLM model via the Fireworks API.
 
         Args:
@@ -9,8 +10,10 @@ class Fireworks_LLM:
             deployment_type (str, optional): Deployment type. Defaults to "serverless".
             fireworks_api_key (str, optional): Fireworks API key. Defaults to "fw_3Zg5B7CUKag67HsSZjCwwbwx".
         """
+        
+        self.data = data
+        self.llm = LLM(model=model, deployment_type=deployment_type, api_key=self.data.fireworks_api_key)
 
-        self.llm = LLM(model=model, deployment_type=deployment_type, api_key=fireworks_api_key)
 
     def generate_answer(self, query=None, context=None, last_response=None):
         """Generate an answer using the LLM model.
@@ -23,6 +26,7 @@ class Fireworks_LLM:
         Returns:
             str: Generated response content from the LLM.
         """
+        
         prompt = []
 
         if context:
@@ -36,6 +40,7 @@ class Fireworks_LLM:
     
         response = self.llm.chat.completions.create(messages=prompt)
         return response.choices[0].message.content
+
 
     def generate_QA(self, query=None, context=None, last_response=None):
         """Generate an answer using the LLM model.
@@ -53,10 +58,6 @@ class Fireworks_LLM:
             Contraintes: Tu es en mode assistant qui répond sous forme de questions-réponses.
             - Les réponses doivent être directes et précises.
             - Ne donne pas plus de détails que ce qui est demandé.
-            - Exemple :
-                Q: Qui est le président de la France ?
-                R: Emmanuel Macron.
-                (ou bien : Le président de la France est Emmanuel Macron.)
         """
 
         constraints = " ".join([constraint.strip() for constraint in constraints.split("\n")])
