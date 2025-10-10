@@ -1,10 +1,12 @@
 import faiss
 import numpy as np
 from outils.dataset import Data
+from .embeddings import Embeddings
 
 class Faiss:
-    def __init__(self, data:Data):
+    def __init__(self, data:Data, embeddings:Embeddings):
         self.data = data
+        self.embeddings = embeddings
 
 
     def create_faiss_index(self):
@@ -29,8 +31,9 @@ class Faiss:
                 - set: Set of document indices corresponding to the retrieved contexts.
         """
 
-        query_embedding = self.data.model.encode([query])
-        _, indices = self.data.index.search(np.array(query_embedding), k=k)
+        query_embedding = np.array(self.embeddings.fireworks_encoding_query(query))
+        query_embedding = query_embedding.reshape((1, query_embedding.shape[0]))
+        _, indices = self.data.index.search(query_embedding, k=k)
         indices_documents = set([self.data.sources[i] for i in indices[0]])
         context_selected = " ".join([" ".join(self.data.documents[index]) for index in indices_documents])
 
