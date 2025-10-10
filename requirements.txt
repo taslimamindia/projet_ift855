@@ -11,7 +11,9 @@ Flask
 Spacy
 ipywidgets
 evaluate
-nltk
 rouge_score
 absl-py
 bert-score
+boto3
+tldextract
+trafilatura 
