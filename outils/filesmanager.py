@@ -3,7 +3,6 @@ import json
 import boto3
 import numpy as np
 from botocore.exceptions import ClientError
-from sentence_transformers import SentenceTransformer
 from .dataset import Data
 
 ######################## Files Operations ###############################
@@ -46,7 +45,6 @@ class FileManager:
             path (str): folder for saving model and embeddings.
         """
         
-        self.data.model.save(path + "embeddings_model")
         np.save(path + "embeddings", self.data.embeddings)
 
 
@@ -56,7 +54,6 @@ class FileManager:
         Args:
             path (str): folder for saving model and embeddings.
         """
-        self.data.model = SentenceTransformer(path + "embeddings_model")
         self.data.embeddings = np.load(path + "embeddings.npy")
 
 
