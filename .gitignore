@@ -1,5 +1,1 @@
-./venv
-datasets/
-datasets/*
-models/__pycache__/*
-outils/__pycache__/*
+.venv/
