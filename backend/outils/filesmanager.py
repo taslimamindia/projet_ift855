@@ -4,6 +4,9 @@ import boto3
 import numpy as np
 from botocore.exceptions import ClientError
 from .dataset import Data
+import json
+from langchain_core.documents import Document
+
 
 ######################## Files Operations ###############################
 class FileManager:
@@ -39,27 +42,27 @@ class FileManager:
 
 
     def save_embeddings(self, path):
-        """Save embeddings and the corresponding model.
+        """Save embeddings numpy array to the given folder path.
 
         Args:
-            path (str): folder for saving model and embeddings.
+            path (str): Folder path (will be used as a prefix). Example: './datasets/'.
         """
         
         np.save(path + "embeddings", self.data.embeddings)
 
 
     def load_embeddings(self, path):
-        """Load embeddings and the corresponding model.
+        """Load embeddings numpy array from the specified folder path.
 
         Args:
-            path (str): folder for saving model and embeddings.
+            path (str): Folder path where 'embeddings.npy' is located (e.g., './datasets/').
         """
         self.data.embeddings = np.load(path + "embeddings.npy")
 
 
 ######################### AWS Files Operations ###########################
 class AWSFileManager(FileManager):
-    def __init__(self, data:Data, bucket_name, aws_access_key_id, aws_secret_access_key, region_name="ca-central-1"):
+    def __init__(self, data:Data, bucket_name, aws_access_key_id, aws_secret_access_key, base_prefix, region_name="ca-central-1"):
         super().__init__(data)
         self.s3 = boto3.client(
             "s3",
@@ -68,6 +71,7 @@ class AWSFileManager(FileManager):
             region_name=region_name
         )
         self.bucket_name = bucket_name
+        self.base_prefix = base_prefix.rstrip("/") + "/" if base_prefix else ""
 
     def create_folder_in_aws(self, folder):
         """
@@ -225,3 +229,88 @@ class AWSFileManager(FileManager):
             print(f"AWS error: {e.response['Error']['Code']} — {e.response['Error']['Message']}")
         except Exception as e:
             print(f"Unexpected error: {e}")
+
+    def upload_file(self, local_path: str, s3_key: str = None) -> str:
+        """Upload a single local file to S3
+        
+        Args:
+            local_path (str): Path to the local file to upload.
+            s3_key (str, optional): S3 key (path) for the uploaded file. If None, uses the local filename. Defaults to None.
+        Returns:
+            str: S3 URL of the uploaded file.
+        """
+
+        if not os.path.isfile(local_path):
+            raise FileNotFoundError(f"File not found: {local_path}")
+
+        if s3_key is None:
+            s3_key = os.path.basename(local_path)
+
+        full_key = self.base_prefix + s3_key
+
+        try:
+            self.s3.upload_file(local_path, self.bucket_name, full_key)
+        except ClientError as e:
+            print(f"Error uploading file to S3: {e}")
+            raise e
+
+    def upload_folder(self, folder_path: str) -> list:
+        """Upload an entire local folder (recursively) to S3
+        
+        Args:
+            folder_path (str): Path to the local folder to upload.
+        Returns:
+            list: List of S3 URLs of the uploaded files.
+        """
+
+        if not os.path.isdir(folder_path):
+            raise NotADirectoryError(f"Directory not found: {folder_path}")
+
+        uploaded_urls = []
+
+        for root, _, files in os.walk(folder_path):
+            for filename in files:
+                local_file_path = os.path.join(root, filename)
+                # Keep folder structure on S3
+                relative_path = os.path.relpath(local_file_path, folder_path)
+                s3_key = self.base_prefix + relative_path.replace("\\", "/")
+
+                try:
+                    self.s3.upload_file(local_file_path, self.bucket_name, s3_key)
+                    file_url = f"https://{self.bucket_name}.s3.amazonaws.com/{s3_key}"
+                    uploaded_urls.append(file_url)
+                except ClientError as e:
+                    print(f"Error uploading {filename}: {e}")
+
+        return uploaded_urls
+    
+
+    def load_json_documents_from_s3(self, key: str) -> list[Document]:
+        """
+        Load JSON data from an S3 bucket where each key is a URL and each value is the corresponding document text.
+
+        The function connects to AWS S3, downloads a JSON file, parses it, and converts each (URL, text)
+        pair into a LangChain Document object.
+
+        Args:
+            bucket_name (str): The name of the S3 bucket.
+            key (str): The full path (key) to the JSON file in the bucket.
+            aws_access_key_id (str): AWS access key ID for authentication.
+            aws_secret_access_key (str): AWS secret access key for authentication.
+
+        Returns:
+            list[Document]: A list of LangChain Document objects, each representing a URL-text pair.
+        """
+        
+
+        obj = self.s3.get_object(Bucket=self.bucket_name, Key=key)
+        file_content = obj["Body"].read().decode("utf-8")
+
+        data = json.loads(file_content)
+
+        documents = [
+            Document(page_content=text, metadata={"source": url})
+            for url, text in data.items()
+        ]
+
+        return documents

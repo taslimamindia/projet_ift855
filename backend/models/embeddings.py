@@ -1,7 +1,5 @@
-from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from fireworks.client import Fireworks
-from tqdm import tqdm
 from outils.dataset import Data
 import numpy as np
 
@@ -40,7 +38,7 @@ class Embeddings:
         self.data.sources = sources
 
     
-    def chunking(self, chunk_size=1000, overlap=200):
+    def chunking(self, chunk_size=500, overlap=50):
         """
         Split documents into overlapping text chunks for processing or embedding.
 
@@ -50,8 +48,8 @@ class Embeddings:
         chunks and their associated source URLs.
 
         Args:
-            chunk_size (int, optional): Maximum number of characters per chunk. Defaults to 1000.
-            overlap (int, optional): Number of overlapping characters between consecutive chunks. Defaults to 200.
+            chunk_size (int, optional): Maximum number of characters per chunk. Defaults to 500.
+            overlap (int, optional): Number of overlapping characters between consecutive chunks. Defaults to 50.
 
         Side Effects:
             - Populates `self.data.chunks` with lists of text chunks for each document.
@@ -85,13 +83,8 @@ class Embeddings:
     def fireworks_embeddings(self):
         """Generate embeddings for the chunks stored in self.data.chunks using Fireworks API.
 
-        This function creates a synchronous Fireworks client session, sends each chunk
-        (or all chunks) to the specified embedding model, and stores the resulting
-        embeddings in self.data.embeddings.
-
         Args:
-            FIREWORKS_API_KEY (str): Your Fireworks API key. Defaults to a placeholder key.
-            MODEL_EMBED (str): The embedding model to use. Defaults to "nomic-ai/nomic-embed-text-v1.5".
+            query (str): The input text to be embedded.
         """
         
         self.data.embeddings = []
@@ -102,7 +95,7 @@ class Embeddings:
         chunks = split_list(self.data.chunks, 50)
 
         with Fireworks(api_key=self.data.fireworks_api_key) as fw:
-            for chunk in tqdm(chunks):
+            for chunk in chunks:
                 response = fw.embeddings.create(
                     model=self.model_embedding_name,
                     input=chunk
@@ -114,14 +107,9 @@ class Embeddings:
     def fireworks_encoding_query(self, query):
         """Generate embeddings for the chunks stored in self.data.chunks using Fireworks API.
 
-        This function creates a synchronous Fireworks client session, sends each chunk
-        (or all chunks) to the specified embedding model, and stores the resulting
-        embeddings in self.data.embeddings.
-
         Args:
-            FIREWORKS_API_KEY (str): Your Fireworks API key. Defaults to a placeholder key.
-            MODEL_EMBED (str): The embedding model to use. Defaults to "nomic-ai/nomic-embed-text-v1.5".
-        
+            query (str): The input text to be embedded.
+            
         Returns:
             (numpy.ndarray): result of embeddings.
         """

@@ -1,17 +1,23 @@
-import requests
 from bs4 import BeautifulSoup
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse, urljoin
 import tldextract
 import trafilatura
-from tqdm import tqdm
 
 
 class Crawling:
     def __init__(self):
-        """Attributs:
-            soup (BeautifulSoup): BeautifulSoup object of the HTML content.
         """
+        Initializes the class with default attributes for HTML parsing,
+        tracking visited URLs, storing extracted text, and handling robots.txt rules.
+
+        Attributes:
+            soup (BeautifulSoup | None): Parsed HTML content.
+            visited (set | None): Set of visited URLs.
+            texts (dict | None): Extracted texts by URL.
+            rp (RobotFileParser | None): Robots.txt parser.
+        """
+        
         self.soup:BeautifulSoup = None
         self.visited:set = None
         self.texts:dict = None
@@ -19,15 +25,14 @@ class Crawling:
 
 
     def scrape_autorization(self, url: str, user_agent: str = "MyScraperBot"):
-        """This function downloads and parses the robots.txt file of the target website,
-        then verifies whether the specified user agent is permitted to fetch the given URL.
+        """Download and prepare a RobotFileParser for the target site's robots.txt.
 
         Args:
-            url (str): The target URL you want to scrape.
-            user_agent (str): The name of your bot or crawler (default: "MyScraperBot").
+            url (str): Target URL to inspect.
+            user_agent (str): Name of the bot (default: "MyScraperBot").
 
         Returns:
-            - RobotFileParser object for this specific url.
+            RobotFileParser: parser configured with the site's robots.txt URL (not yet read).
         """
         
         parsed_url = urlparse(url)
@@ -48,9 +53,7 @@ class Crawling:
             user_agent (str): The name of your bot or crawler (default: "MyScraperBot").
 
         Returns:
-            bool: 
-                - True if scraping the URL is allowed by robots.txt.
-                - False if scraping is disallowed or if robots.txt cannot be accessed.
+            bool: True if scraping the URL is allowed by robots.txt, False otherwise.
         """
         try:
             rp.read()
@@ -70,9 +73,10 @@ class Crawling:
         """
         
         https_urls = []
+        extension = ('.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.rar', '.svg', '.mp4', '.mp3', '.avi', '.mov')
         for a_tag in self.soup.find_all('a', href=True):
             href = a_tag['href']
-            if href.startswith('https://') and domain.lower() in href.lower() and not href.endswith('.pdf'):
+            if href.startswith('https://') and domain.lower() in href.lower() and not href.endswith(extension):
                 https_urls.append(href)
         return https_urls
 
@@ -90,7 +94,7 @@ class Crawling:
             params (dict, optional): Optional dictionary of query parameters to append to the URL. Defaults to None.
 
         Returns:
-            str: A single string containing the cleaned and concatenated text from the page.
+            str: Cleaned and concatenated visible text from the page, or an empty string if fetching failed.
         """
 
         from urllib.parse import urlencode
@@ -99,8 +103,10 @@ class Crawling:
             url = url + "?" + urlencode(params)
         
         downloaded = trafilatura.fetch_url(url)
-        if downloaded:
-            self.soup = BeautifulSoup(downloaded, "html.parser")
+        if not downloaded:
+            return ""
+
+        self.soup = BeautifulSoup(downloaded, "html.parser")
         texts = self.soup.stripped_strings
         return " ".join(texts)
 
@@ -112,7 +118,7 @@ class Crawling:
             texts (dict): Dictionary with URLs as keys and extracted text as values.
 
         Returns:
-            dict: Cleaned dictionary with only non-empty text entries.
+            dict: Filtered dictionary containing only entries with at least 100 characters.
         """
         
         cleaned_texts = {}
@@ -144,18 +150,19 @@ class Crawling:
             self.texts[url] = extract_function(url, params)
             new_urls = self.extract_https_urls(domain)
             self.visited.add(url)
-            if current_depth >= max_depth or new_urls == []:
-                return None
-            else:
-                new_urls = [new_url for new_url in new_urls if new_url not in self.visited]
-                for new_url in new_urls:
-                    self.recursive_crawl(new_url, domain, extract_function, max_depth, current_depth + 1)
 
-        except requests.RequestException as e:
+            # stop if max depth reached or no new urls
+            if current_depth >= max_depth or not new_urls:
+                return None
+
+            new_urls = [u for u in new_urls if u not in self.visited]
+            for new_url in new_urls:
+                self.recursive_crawl(new_url, domain, extract_function, max_depth, current_depth + 1)
+
+        except Exception:
+            # mark as visited and continue on errors
             self.visited.add(url)
             return None
-        
-        return None
 
 
     def crawl(self, data):
@@ -173,7 +180,7 @@ class Crawling:
         self.visited = set()
         self.texts = {}
 
-        for entry in tqdm(data):
+        for entry in data:
             url, domain, max_depth = entry
             self.recursive_crawl(url, domain, self.extract_text, max_depth=max_depth)
 
@@ -194,7 +201,8 @@ class Crawling:
 
         if not self.can_scrape(self.rp, url):
             return False, "Désolé, conformément aux règles de navigation de ce site, l’exploration par les robots n’est pas autorisée !!!"
-        elif mode_search:
+        
+        if mode_search:
             self.extract_text(url, params=params)
             form = self.soup.find("form")
             if form:

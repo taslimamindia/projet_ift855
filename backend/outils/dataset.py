@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import numpy as np
-from sentence_transformers import SentenceTransformer
 import faiss
 
 
@@ -26,21 +25,20 @@ class Data:
             A flattened list of URLs corresponding to each text segment in `chunks`.
             Ensures traceability between chunks and their original source.
         
-        model (SentenceTransformer): 
-            The embedding model used to transform text chunks into vector representations.
-        
         embeddings (numpy.ndarray): 
             A matrix of embeddings generated from `chunks`, used for similarity search
             and vector database queries.
         
         index (faiss.swigfaiss_avx2.IndexFlatL2): 
             The FAISS index structure used to store and query embeddings efficiently.
+        
+        fireworks_api_key (str): 
+            API key for Fireworks model access.
     """
 
     documents: dict = None
     chunks: list = None
     sources: list = None
-    model: SentenceTransformer = None
     embeddings: np.ndarray = None
-    index: faiss.swigfaiss_avx2.IndexFlatL2 = None
-    fireworks_api_key=None
+    index: any = None
+    fireworks_api_key: str = None
