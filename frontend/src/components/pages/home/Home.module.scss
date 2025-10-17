@@ -1,0 +1,40 @@
+.homeContainer {
+  padding-top: 40px;
+  padding-bottom: 60px;
+}
+
+.card {
+  border-radius: 12px;
+  transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+  transform: scale(1.02);
+}
+
+.cardTitle {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.cardText {
+  font-size: 1rem;
+  color: #555;
+}
+
+.diagramContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2rem;
+}
+
+.diagramImage {
+  width: 100%;
+  max-width: 1200px;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
