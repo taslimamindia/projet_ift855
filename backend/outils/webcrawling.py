@@ -22,7 +22,8 @@ class Crawling:
         self.visited:set = None
         self.texts:dict = None
         self.rp: RobotFileParser = None
-
+        self.extension = ('.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.rar', '.svg', '.mp4', '.mp3', '.avi', '.mov')
+        
 
     def scrape_autorization(self, url: str, user_agent: str = "MyScraperBot"):
         """Download and prepare a RobotFileParser for the target site's robots.txt.
@@ -62,10 +63,11 @@ class Crawling:
             return False
 
 
-    def extract_https_urls(self, domain):
+    def extract_https_urls(self, url, domain):
         """Extract HTTPS URLs from the same domain as provided.
 
         Args:
+            url (str): The base URL to resolve relative links.
             domain (str): Domain to filter (e.g., 'example.com').
 
         Returns:
@@ -73,11 +75,16 @@ class Crawling:
         """
         
         https_urls = []
-        extension = ('.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.rar', '.svg', '.mp4', '.mp3', '.avi', '.mov')
+        
         for a_tag in self.soup.find_all('a', href=True):
             href = a_tag['href']
-            if href.startswith('https://') and domain.lower() in href.lower() and not href.endswith(extension):
+
+            if href.startswith('/'):
+                href = urljoin(url, href)
+            
+            if href.startswith('https://') and (domain.lower() in href.lower()) and not href.endswith(self.extension):
                 https_urls.append(href)
+
         return https_urls
 
 
@@ -96,16 +103,8 @@ class Crawling:
         Returns:
             str: Cleaned and concatenated visible text from the page, or an empty string if fetching failed.
         """
-
-        from urllib.parse import urlencode
-
-        if params:
-            url = url + "?" + urlencode(params)
         
         downloaded = trafilatura.fetch_url(url)
-        if not downloaded:
-            return ""
-
         self.soup = BeautifulSoup(downloaded, "html.parser")
         texts = self.soup.stripped_strings
         return " ".join(texts)
@@ -123,12 +122,12 @@ class Crawling:
         
         cleaned_texts = {}
         for url, text in texts.items():
-            if text and len(text) > 100:
+            if text and len(text) > 50:
                 cleaned_texts[url] = text
         return cleaned_texts
 
 
-    def recursive_crawl(self, url, domain, extract_function, max_depth=2, current_depth=0, params=None):
+    def recursive_crawl(self, url, domain, extract_function, max_depth=2, params=None):
         """Perform a recursive crawl starting from the given URL up to a maximum depth.
 
         Args:
@@ -143,51 +142,31 @@ class Crawling:
                 - dict: Dictionary of extracted texts from URLs.
         """
 
-        if url in self.visited:
-            return None
-        
-        try:
-            self.texts[url] = extract_function(url, params)
-            new_urls = self.extract_https_urls(domain)
-            self.visited.add(url)
+        urls_in_queue = set([url])
+        can_stop = False
+        while len(urls_in_queue) and len(self.texts) <= max_depth:
+            current_url = urls_in_queue.pop()
+            lenght_texts = len(self.texts)
+            lenght_queue = len(urls_in_queue)
+            
+            try:
+                self.texts[current_url] = extract_function(current_url, params)
+                self.visited.add(current_url)
 
-            # stop if max depth reached or no new urls
-            if current_depth >= max_depth or not new_urls:
-                return None
+                if len(urls_in_queue) > 1000:
+                    can_stop = True
 
-            new_urls = [u for u in new_urls if u not in self.visited]
-            for new_url in new_urls:
-                self.recursive_crawl(new_url, domain, extract_function, max_depth, current_depth + 1)
+                if not can_stop:
+                    new_urls = self.extract_https_urls(current_url, domain)
+                    urls_in_queue.update([new_url for new_url in new_urls if new_url not in self.visited])
 
-        except Exception:
-            # mark as visited and continue on errors
-            self.visited.add(url)
-            return None
+            except Exception:
+                # mark as visited and continue on errors
+                print("Error crawling URL:", current_url)
+                self.visited.add(current_url)
+    
 
-
-    def crawl(self, data):
-        """Perform crawling for a list of URLs.
-
-        Args:
-            data (list of tuple): List of tuples containing (URL, domain, max_depth).
-
-        Returns:
-            tuple:
-                - set: Set of all visited URLs.
-                - dict: Dictionary of cleaned extracted texts.
-        """
-
-        self.visited = set()
-        self.texts = {}
-
-        for entry in data:
-            url, domain, max_depth = entry
-            self.recursive_crawl(url, domain, self.extract_text, max_depth=max_depth)
-
-        self.texts = self.clean_documents(self.texts)
-
-
-    def crawl_with_control(self, url, params=None, max_depth=2, mode_search=False):
+    def crawl(self, url, params=None, max_depth=2, mode_search=False):
         """Perform crawling for with control of robots.txt.
 
         Args:
@@ -196,11 +175,10 @@ class Crawling:
 
         self.visited = set()
         self.texts = {}
-
         self.rp = self.scrape_autorization(url)
 
         if not self.can_scrape(self.rp, url):
-            return False, "Désolé, conformément aux règles de navigation de ce site, l’exploration par les robots n’est pas autorisée !!!"
+            raise ValueError("Désolé, conformément aux règles de navigation de ce site, l’exploration par les robots n’est pas autorisée !!!")
         
         if mode_search:
             self.extract_text(url, params=params)
@@ -211,5 +189,5 @@ class Crawling:
                 params = None
         
         ext = tldextract.extract(url)
-        self.recursive_crawl(url, f"{ext.domain}.{ext.suffix}", self.extract_text, max_depth, params=params)
+        self.recursive_crawl(url, domain=f"{ext.domain}.{ext.suffix}", extract_function=self.extract_text, max_depth=max_depth, params=params)
         self.texts = self.clean_documents(self.texts)

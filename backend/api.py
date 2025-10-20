@@ -76,6 +76,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# Autoriser tous les domaines, méthodes et headers
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],       # Autorise toutes les origines
+    allow_credentials=True,    # Autorise les cookies / credentials
+    allow_methods=["*"],       # Autorise toutes les méthodes (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],       # Autorise tous les headers (Content-Type, Authorization, etc.)
+)
+
+@app.get("/")
+def root():
+    return {"message": "CORS activé pour tout le monde !"}
+
+
 @dataclass
 class DataRequest:
     """Request payload for RAG/chat endpoints.
@@ -137,13 +154,13 @@ async def websocket_crawling(ws: WebSocket):
 
     # proceed with crawling when URL is provided
     else:
-        max_depth = data.get("k", 3)
+        max_depth = 250
         model = app.state.models.get(extract_domain(url), None)
         if model is None:
             await ws.send_json({"step": "crawling", "status": "failed", "error": "Model not initialized for this domain"})
             await ws.close()
             return
-        model.crawling.crawl_with_control(url, max_depth=max_depth)
+        model.crawling.crawl(url, max_depth=max_depth)
         model.data.documents = model.crawling.texts
         await ws.send_json({"step": "crawling", "status": "done"})
         await ws.close()
@@ -195,51 +212,6 @@ async def websocket_indexing(ws: WebSocket):
         await ws.send_json({"step": "indexing", "status": "done"})
         await ws.close()
 
-# @app.websocket("/api/pipeline/initialize")
-# async def websocket_pipeline(ws: WebSocket):
-#     await ws.accept()
-
-#     try:
-#         data = await ws.receive_json()
-#         url = data.get("url", None)
-#         print(url, "initialize")
-
-#         if not url:
-#             # print("URL manquante")
-#             await ws.send_json({"step": "pipeline", "status": "failed", "error": "URL manquante"})
-#             await ws.close()
-#             return
-
-#         model, domain = await initialization(url)
-        
-#         print(f"Starting pipeline for URL: {url} under domain: {domain}")
-#         print("crawling...")
-#         # --- 1. CRAWLING ---
-#         await ws.send_json({"step": "crawling", "status": "start"})
-#         await process_crawling(model=model, url=url, max_depth=3)
-#         await ws.send_json({"step": "crawling", "status": "done"})
-
-#         print("embedding...")
-#         # --- 2. EMBEDDINGS ---
-#         await ws.send_json({"step": "embedding", "status": "start"})
-#         await process_embedding(model=model)
-#         await ws.send_json({"step": "embedding", "status": "done"})
-
-#         print("indexing...")
-#         # --- 3. INDEXING ---
-#         await ws.send_json({"step": "indexing", "status": "start"})
-#         await process_indexing(model=model)
-#         await ws.send_json({"step": "indexing", "status": "done"})
-
-#         print("End...")
-#         # --- End of the PIPELINE ---
-#         await ws.send_json({"step": "pipeline", "status": "done"})
-#         await ws.close()
-
-    # except Exception as e:
-    #     await ws.send_json({"error": str(e)})
-    #     await ws.close()
-
 
 @app.post("/api/chat/rag")
 async def chat_rag(datarequest: DataRequest):
@@ -260,13 +232,3 @@ async def chat_rag(datarequest: DataRequest):
 
     result = model.rag_langchain.answer(datarequest.query, k=k)
     return {"query": datarequest.query, "response": result.get("response")}
-
-
-@app.get("/config")
-def get_config():
-    return {
-        "env": settings.env,
-        "embedding_model": settings.model_embeddings_name,
-        "llm_model": settings.model_llm_name,
-        "deployment": settings.deployment_type,
-    }
