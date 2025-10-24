@@ -42,3 +42,5 @@ class Data:
     embeddings: np.ndarray = None
     index: any = None
     fireworks_api_key: str = None
+    documents_language: str = None
+    query_language: str = None

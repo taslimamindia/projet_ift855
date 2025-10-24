@@ -47,7 +47,6 @@ def create_model(settings: Settings):
     model.file = FileManager(model.data)
     model.faiss = Faiss(model.data, model.embeddings)
     model.llm = Fireworks_LLM(model.data, settings.model_llm_name, settings.deployment_type)
-
     model.rag_langchain = LangChainRAGAgent(model.data, model.faiss, model.llm)
 
     return model
@@ -62,6 +61,8 @@ async def lifespan(app: FastAPI):
     model.data.chunks = model.file.load_texts_from_json("./datasets/crawled_chunks.json")
     model.data.sources = model.file.load_texts_from_json("./datasets/crawled_sources.json")
     model.faiss.create_faiss_index()
+    model.data.documents_language = "french"
+    model.data.query_language = "french"
 
     app.state.model = model
     app.state.models = {}
@@ -108,6 +109,7 @@ class DataRequest:
     url: str = None
     mode: str = None
     k: int = 5
+    max_depth: int = 200
 
 
 def extract_domain(url: str) -> str:
@@ -145,16 +147,16 @@ async def websocket_initialization(ws: WebSocket):
 async def websocket_crawling(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
-
+    max_depth = int(data.get("max_depth", 250))
+    print(f"Max depth received: {max_depth}")
     url = data.get("url", None)
-    if not url:
-        await ws.send_json({"step": "crawling", "status": "failed", "error": "URL is required"})
+    if not url or not max_depth:
+        await ws.send_json({"step": "crawling", "status": "failed", "error": "URL and max_depth are required"})
         await ws.close()
         return
 
     # proceed with crawling when URL is provided
     else:
-        max_depth = 250
         model = app.state.models.get(extract_domain(url), None)
         if model is None:
             await ws.send_json({"step": "crawling", "status": "failed", "error": "Model not initialized for this domain"})
@@ -219,16 +221,34 @@ async def chat_rag(datarequest: DataRequest):
 
     The function selects either the global default model or a domain-specific model
     (based on the provided `url`) and returns the generated answer string.
+
+    Args:
+        datarequest (DataRequest): The request payload containing the query, optional URL, mode and k.
+    
+    Returns:
+        dict: A dictionary containing the original query and the generated response.
     """
 
-    k = datarequest.k or 5
-    if not datarequest.url:
-        model = app.state.model
-    else:
-        domain = extract_domain(datarequest.url)
-        model = app.state.models.get(domain, None)
-        if model is None:
-            raise ValueError(f"No model found for domain: {domain}")
+    try:
+        k = datarequest.k or 5
 
-    result = model.rag_langchain.answer(datarequest.query, k=k)
-    return {"query": datarequest.query, "response": result.get("response")}
+        if not datarequest.url:
+            model = app.state.model
+        else:
+            domain = extract_domain(datarequest.url)
+            model = app.state.models.get(domain, None)
+            if model is None:
+                raise ValueError(f"No model found for domain: {domain}")
+        
+        if model is None or model.data is None:
+            raise ValueError("No default model found or initialized.")
+        else:
+            model.data.documents_language = model.llm.detect_language_of_documents(model.data.documents)
+            if datarequest.query and datarequest.query.strip():
+                model.data.query_language = model.llm.detect_language(datarequest.query)
+
+        result = model.rag_langchain.answer(datarequest.query, k=k)
+        return {"query": datarequest.query, "response": result.get("response")}
+    
+    except Exception as e:
+        raise e

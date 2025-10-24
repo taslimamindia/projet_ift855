@@ -2,6 +2,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from fireworks.client import Fireworks
 from outils.dataset import Data
 import numpy as np
+from tqdm import tqdm
 
 
 class Embeddings:
@@ -80,7 +81,7 @@ class Embeddings:
             self.data.sources.append([url] * len(chunk))
     
 
-    def fireworks_embeddings(self):
+    def fireworks_embeddings(self, dividend=50):
         """Generate embeddings for the chunks stored in self.data.chunks using Fireworks API.
 
         Args:
@@ -88,14 +89,17 @@ class Embeddings:
         """
         
         self.data.embeddings = []
+        n = len(self.data.chunks)
+        q = n // dividend
+        r = n % dividend
 
-        def split_list(lst, n):
-            k, m = divmod(len(lst), n)
-            return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
-        chunks = split_list(self.data.chunks, 50)
+        chunks = [self.data.chunks[i * dividend: (i + 1) * dividend] for i in range(q)]
+        if r > 0:
+            chunks.append(self.data.chunks[q * dividend: q * dividend + r])
+        print(reversed([len(c) for c in chunks]))
 
         with Fireworks(api_key=self.data.fireworks_api_key) as fw:
-            for chunk in chunks:
+            for chunk in tqdm(chunks, desc="Generating embeddings", colour="green"):
                 response = fw.embeddings.create(
                     model=self.model_embedding_name,
                     input=chunk

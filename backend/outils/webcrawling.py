@@ -3,6 +3,7 @@ from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse, urljoin
 import tldextract
 import trafilatura
+from tqdm import tqdm
 
 
 class Crawling:
@@ -127,7 +128,7 @@ class Crawling:
         return cleaned_texts
 
 
-    def recursive_crawl(self, url, domain, extract_function, max_depth=2, params=None):
+    def recursive_crawl(self, url, domain, extract_function, max_depth=200, params=None):
         """Perform a recursive crawl starting from the given URL up to a maximum depth.
 
         Args:
@@ -146,9 +147,8 @@ class Crawling:
         can_stop = False
         while len(urls_in_queue) and len(self.texts) <= max_depth:
             current_url = urls_in_queue.pop()
-            lenght_texts = len(self.texts)
-            lenght_queue = len(urls_in_queue)
-            
+            if len(self.texts) % 30 == 0:
+                print(f"Current depth: {len(self.texts)}, URLs in queue: {len(urls_in_queue)}")
             try:
                 self.texts[current_url] = extract_function(current_url, params)
                 self.visited.add(current_url)
@@ -161,12 +161,11 @@ class Crawling:
                     urls_in_queue.update([new_url for new_url in new_urls if new_url not in self.visited])
 
             except Exception:
-                # mark as visited and continue on errors
                 print("Error crawling URL:", current_url)
                 self.visited.add(current_url)
     
 
-    def crawl(self, url, params=None, max_depth=2, mode_search=False):
+    def crawl(self, url, params=None, max_depth=200, mode_search=False):
         """Perform crawling for with control of robots.txt.
 
         Args:
@@ -189,5 +188,11 @@ class Crawling:
                 params = None
         
         ext = tldextract.extract(url)
-        self.recursive_crawl(url, domain=f"{ext.domain}.{ext.suffix}", extract_function=self.extract_text, max_depth=max_depth, params=params)
+        self.recursive_crawl(
+            url,
+            domain=f"{ext.domain}.{ext.suffix}",
+            extract_function=self.extract_text,
+            max_depth=max_depth,
+            params=params
+        )
         self.texts = self.clean_documents(self.texts)
