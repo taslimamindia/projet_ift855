@@ -12,3 +12,6 @@ pydantic
 langchain
 fireworks-ai
 pydantic-settings
+tqdm
+langid
+pycountry
