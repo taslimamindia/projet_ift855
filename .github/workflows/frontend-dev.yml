@@ -44,14 +44,13 @@ jobs:
         working-directory: ./frontend
         run: npm run build  
         
-      - name: Configure, Build and Deploy to Amplify
+      - name: Deploy to Amplify
+        working-directory: ./frontend
+        run: |
+          amplify configure
+          amplify publish --yes # Deploys the latest build to Amplify
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
-        run: |
-          amplify pull \
-            --appId ${{ secrets.AWS_AMPLIFY_APP_ID }} \
-            --envName ${{ secrets.AWS_AMPLIFY_BRANCH_NAME }} \
-            --yes
-          amplify publish --yes
+          
