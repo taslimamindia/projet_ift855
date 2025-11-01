@@ -1,17 +1,21 @@
-name: Deploy Frontend to Amplify
+name: Deploy to AWS Amplify (Development)
 
 on:
   push:
     branches:
       - development
+
   pull_request:
+    types: [closed]
     branches:
       - development
+
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
 
     steps:
       - name: Checkout code
@@ -22,51 +26,25 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: ./frontend
-
-      - name: Build React app
-        run: npm run build
-        working-directory: ./frontend
-
-      - name: Debug secrets presence and values
-        run: |
-          echo "🔍 Vérification des secrets AWS"
-      
-          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
-            echo "❌ AWS_ACCESS_KEY_ID is missing"
-          else
-            echo "✅ AWS_ACCESS_KEY_ID is set: ${{ secrets.AWS_ACCESS_KEY_ID }}"
-          fi
-      
-          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
-            echo "❌ AWS_SECRET_ACCESS_KEY is missing"
-          else
-            echo "✅ AWS_SECRET_ACCESS_KEY is set: ${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          fi
-      
-          if [ -z "${{ secrets.AWS_REGION }}" ]; then
-            echo "❌ AWS_REGION is missing"
-          else
-            echo "✅ AWS_REGION is set: ${{ secrets.AWS_REGION }}"
-          fi
-
-          if [ -z "${{ secrets.AWS_AMPLIFY_APP_ID }}" ]; then
-            echo "❌ AWS_AMPLIFY_APP_ID is missing"
-          else
-            echo "✅ AWS_AMPLIFY_APP_ID is set: ${{ secrets.AWS_AMPLIFY_APP_ID }}"
-          fi
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy to AWS Amplify
+      - name: Install dependencies and Amplify CLI
         run: |
           npm install -g @aws-amplify/cli
-          amplify pull --appId ${{ secrets.AWS_AMPLIFY_APP_ID }} --envName ${{ secrets.AWS_AMPLIFY_APP_BRANCH }} --yes
+          npm install
+
+      - name: Create .env.production file
+        run: |
+          echo "VITE_BACKEND_API_URL=${{ secrets.VITE_BACKEND_API_URL }}" >> .env.production
+          echo "VITE_BACKEND_API_URL_WS=${{ secrets.VITE_BACKEND_API_URL_WS }}" >> .env.production
+        
+      - name: Configure, Build and Deploy to Amplify
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          amplify pull \
+            --appId ${{ secrets.AWS_AMPLIFY_APP_ID }} \
+            --envName ${{ secrets.AWS_AMPLIFY_BRANCH_NAME }} \
+            --yes
+          npm run build
           amplify publish --yes
