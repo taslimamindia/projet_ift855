@@ -1,5 +1,6 @@
-./venv
-datasets/
-datasets/*
-models/__pycache__/*
-outils/__pycache__/*
+.venv/
+
+# Ignorer les fichiers compilés Python
+__pycache__/
+*.py[cod]
+*$py.class

@@ -7,7 +7,6 @@ import pandas as pd
 from fireworks import LLM
 import json
 from .dataset import Data
-import re
 
 
 class Evaluation:
@@ -84,7 +83,7 @@ class Evaluation:
         plt.ylim(0, 1) 
         plt.xlabel("Tests")
         plt.ylabel("Scores")
-        plt.title("Évolution des métriques par test")
+        plt.title("Evolution of metrics across tests")
         plt.legend()
         plt.grid(True)
         plt.show()
@@ -146,12 +145,12 @@ class Evaluation:
             answer (str): The generated answer from the model.
             reference (str): The correct reference answer.
 
-        Returns:
-            dict: A dictionary containing:
-                - "rouge" (dict): ROUGE scores with keys 
-                "Rouge1 Unigrams" and "Rouge2 Bigrams".
-                - "bert_score" (dict): BERTScore metrics with keys 
-                "Precision", "Recall", and "F1".
+                Returns:
+                        dict: A dictionary containing:
+                                - "rouge" (dict): ROUGE scores with keys
+                                    "Rouge1 Unigrams" and "Rouge2 Bigrams".
+                                - "bert_score" (dict): BERTScore metrics with keys
+                                    "Precision", "Recall", and "F1".
         """
 
         generated = list(set(word_tokenize(answer.lower())))
@@ -166,6 +165,7 @@ class Evaluation:
             "Rouge2 Bigrammes": np.round(rouge_result["rouge2"], 4)
         }
         
+        # keep evaluation language configurable; here BERTScore uses French ('fr') by default
         P, R, F1 = score([generated], [reference], lang="fr")
         bert_result = {
             "Precision": np.round(P.mean().item(), 4),
@@ -181,11 +181,10 @@ class Evaluation:
         llm_model_name="accounts/fireworks/models/gpt-oss-20b",
         strict_mode=True
     ):
-        """
-        Évalue un système RAG avec et sans contexte en utilisant G-Eval via Fireworks.
+        """Evaluate a RAG system with and without context using Fireworks G-Eval.
 
         Args:
-            dataset (list[dict]): liste de dictionnaires contenant :
+            dataset (list[dict]): List of cases with keys:
                 {
                     "question": str,
                     "expected_answer": str,
@@ -193,11 +192,11 @@ class Evaluation:
                     "answer_no_context": str,
                     "answer_with_context": str
                 }
-            llm_model_name (str): modèle juge Fireworks à utiliser.
-            strict_mode (bool): si True, encourage des scores discrets (0 ou 1).
+            llm_model_name (str): Fireworks judge model identifier to use.
+            strict_mode (bool): If True, enforces stricter scores (closer to 0 or 1).
 
         Returns:
-            pd.DataFrame : un tableau contenant les scores et justifications.
+            pd.DataFrame: DataFrame containing scores and justifications from the judge.
         """
         
         fw = LLM(api_key=self.data.fireworks_api_key, model=llm_model_name, deployment_type="serverless")
