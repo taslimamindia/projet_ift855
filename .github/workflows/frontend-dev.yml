@@ -26,15 +26,19 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies and Amplify CLI
-        run: |
-          npm install -g @aws-amplify/cli
-          npm install
-
-      - name: Create .env.production file
+      - name: Create .env file for Frontend
+        working-directory: ./frontend
         run: |
           echo "VITE_BACKEND_API_URL=${{ secrets.VITE_BACKEND_API_URL }}" >> .env.production
           echo "VITE_BACKEND_API_URL_WS=${{ secrets.VITE_BACKEND_API_URL_WS }}" >> .env.production
+          
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Frontend Application
+        working-directory: ./frontend
+        run: npm run build  
         
       - name: Configure, Build and Deploy to Amplify
         env:
@@ -46,5 +50,4 @@ jobs:
             --appId ${{ secrets.AWS_AMPLIFY_APP_ID }} \
             --envName ${{ secrets.AWS_AMPLIFY_BRANCH_NAME }} \
             --yes
-          npm run build
           amplify publish --yes
