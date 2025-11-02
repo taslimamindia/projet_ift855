@@ -145,9 +145,10 @@ class Crawling:
 
         urls_in_queue = set([url])
         can_stop = False
+        print(f"Starting crawl at: {url} up to {max_depth}")
         while len(urls_in_queue) and len(self.texts) <= max_depth:
             current_url = urls_in_queue.pop()
-            if len(self.texts) % 30 == 0:
+            if len(self.texts) % 50 == 0:
                 print(f"Current depth: {len(self.texts)}, URLs in queue: {len(urls_in_queue)}")
             try:
                 self.texts[current_url] = extract_function(current_url, params)
