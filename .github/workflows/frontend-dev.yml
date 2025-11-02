@@ -2,20 +2,19 @@ name: Deploy Frontend to S3 + CloudFront
 
 
 on:
-  push:
-    branches:
-      - development
-
+  # Trigger only when a PR targeting main is closed
   pull_request:
     types: [closed]
     branches:
       - development
-
+      
+  # Allow manual trigger
   workflow_dispatch:
-
 
 jobs:
   deploy:
+    # Run only if the PR was actually merged (not just closed)
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
