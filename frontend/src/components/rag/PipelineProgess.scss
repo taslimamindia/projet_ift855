@@ -1,0 +1,34 @@
+.pipeline-progress {
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  align-items: center;
+}
+
+.icon-container {
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pipeline-icon {
+  font-size: 3.25rem;
+}
+
+.large-spinner {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-width: 0.35rem;
+}
+
+.step-title {
+  font-weight: 600;
+}
+
+.step-message {
+  font-size: 0.95rem;
+}
+
+.controls { max-width: 160px; }

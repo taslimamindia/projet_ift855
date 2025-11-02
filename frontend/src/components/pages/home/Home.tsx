@@ -1,0 +1,112 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import styles from './Home.module.scss';
+
+const Home: React.FC = () => {
+  const [url, setUrl] = useState('');
+  const navigate = useNavigate();
+
+  const handleGovClick = () => {
+    navigate('/chat/gov/gn');
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (url.trim()) {
+      navigate(`/chat/custom?url=${encodeURIComponent(url)}`);
+    }
+  };
+
+  return (
+    <div className={`container ${styles.homeContainer}`}>
+      <h1 className="text-center mt-5">Bienvenue sur le Chat Data Explorer</h1>
+      <p className="lead text-center mb-5">
+        Choisissez une source de données pour démarrer votre session de chat.
+      </p>
+
+      <div className="row justify-content-center">
+        <div className="col-md-6 mb-4">
+          <div className={`card shadow-sm h-100 ${styles.card}`}>
+            <div className="card-body text-center">
+              <h5 className={styles.cardTitle}>📊 Site du gouvernement de la Guinée</h5>
+              <p className={styles.cardText}>
+                Utilisez ce modèle pour explorer les données officielles de la Guinée.
+              </p>
+              
+            </div>
+            <div className='card-footer text-center'>
+              <button className="btn btn-primary" onClick={handleGovClick}>
+                Démarrer le Chat
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-md-6 mb-4">
+          <form onSubmit={handleSubmit}>
+            <div className={`card shadow-sm h-100 ${styles.card}`}>
+              <div className="card-body text-center">
+                <h5 className={styles.cardTitle}>🌐 Fournir une URL</h5>
+                <p className={styles.cardText}>
+                  Entrez l’adresse d’un site web pour crawler ses données et discuter avec l'AI.
+                </p>
+                
+                  <input
+                    id="url"
+                    type="url"
+                    placeholder="https://"
+                    className="form-control mb-3"
+                    value={url}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      if (!value.startsWith("https://")) {
+                        value = "https://";
+                      }
+                      setUrl(value);
+                    }}
+                    required
+                  />                
+              </div>
+              <div className='card-footer text-center'>
+                <button type="submit" className="btn btn-primary">
+                    Lancer le Chat
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div className={styles.githubInlineWrapper}>
+        <a
+          href="https://github.com/taslimamindia/projet_ift855"
+          className={`${styles.githubLink} ${styles.githubInline}`}
+          title="Voir le dépôt du projet sur GitHub"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <svg
+            className={styles.githubIcon}
+            viewBox="0 0 16 16"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+          </svg>
+          <span className={styles.githubLabel}>Voir le projet</span>
+        </a>
+      </div>
+
+      <div className={styles.diagramContainer}>
+        <img
+          src="/img/diagrammeRAG.jpg"
+          alt="Diagramme RAG"
+          className={styles.diagramImage}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default Home;
