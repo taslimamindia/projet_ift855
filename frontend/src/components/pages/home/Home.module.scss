@@ -1,6 +1,7 @@
 .homeContainer {
   padding-top: 40px;
   padding-bottom: 60px;
+  position: relative;
 }
 
 .card {
@@ -37,4 +38,51 @@
   object-fit: contain;
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+
+/* Lien GitHub discret en haut à droite, icône agrandie + label */
+.githubLink {
+  /* par défaut styles du lien; la position absolue est évitée pour permettre flexibilité
+     lorsqu'on veut l'insérer dans le flux du document (voir .githubInline pour override) */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #0d6efd; /* couleur bootstrap primary */
+  background: rgba(255,255,255,0.98);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.githubLink:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+.githubIcon {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.githubLabel {
+  display: inline-block;
+}
+
+/* Wrapper pour centrer le lien dans le flux (utilisé pour l'emplacement demandé) */
+.githubInlineWrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+/* Variante inline qui annule toute position absolue si présente */
+.githubInline {
+  position: static;
 }
