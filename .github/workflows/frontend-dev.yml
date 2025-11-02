@@ -13,11 +13,25 @@ on:
 
 jobs:
   deploy:
-    # Run only if the PR was actually merged (not just closed)
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
+      # Validate trigger conditions
+      - name: Validate trigger conditions
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.event.pull_request.merged }}" != "true" ]; then
+              echo "Error: PR was closed but not merged. Failing..."
+              exit 1
+            fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger detected."
+          else
+            echo "Error: Invalid trigger event: ${{ github.event_name }}"
+            exit 1
+          fi
+          echo "Trigger conditions satisfied."
+      
       # --- Checkout repository ---
       - name: Checkout repository
         uses: actions/checkout@v4
