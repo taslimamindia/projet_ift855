@@ -1,4 +1,5 @@
-name: Deploy to AWS Amplify (Development)
+name: Deploy Frontend to S3 + CloudFront
+
 
 on:
   push:
@@ -12,53 +13,79 @@ on:
 
   workflow_dispatch:
 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
 
     steps:
-      - name: Checkout code
+      # --- Checkout repository ---
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --- Setup Node.js ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 18
 
-      - name: Create .env file for Frontend
-        working-directory: ./frontend
+      # --- Check required environment variables ---
+      - name: Check required environment variables
         run: |
-          echo "VITE_BACKEND_API_URL=${{ secrets.VITE_BACKEND_API_URL }}" >> .env.production
-          echo "VITE_BACKEND_API_URL_WS=${{ secrets.VITE_BACKEND_API_URL_WS }}" >> .env.production
-          
-      - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm ci
+          REQUIRED_VARS=(
+            "AWS_REGION"
+            "AWS_ACCESS_KEY_ID"
+            "AWS_SECRET_ACCESS_KEY"
+            "AWS_S3_BUCKET_NAME"
+            "AWS_CLOUDFRONT_DISTRIBUTION_ID"
+            "VITE_BACKEND_API_URL"
+            "VITE_BACKEND_API_URL_WS"
+          )
+          for var in "${REQUIRED_VARS[@]}"; do
+            if [ -z "${!var:-}" ]; then
+              echo "❌ Error: variable $var is not defined."
+              exit 1
+            fi
+          done
+          echo "✅ All required environment variables are available."
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+          VITE_BACKEND_API_URL: ${{ secrets.VITE_BACKEND_API_URL }}
+          VITE_BACKEND_API_URL_WS: ${{ secrets.VITE_BACKEND_API_URL_WS }}
 
-      - name: Install Amplify CLI
+      # --- Install dependencies ---
+      - name: Install dependencies
         working-directory: ./frontend
-        run: npm install -g @aws-amplify/cli
+        run: npm ci || npm install
 
-      - name: Build Frontend Application
+      # --- Build project with Vite environment variables ---
+      - name: Build project
         working-directory: ./frontend
-        run: npm run build  
-        
+        run: npm run build
+        env:
+          VITE_BACKEND_API_URL: ${{ secrets.VITE_BACKEND_API_URL }}
+          VITE_BACKEND_API_URL_WS: ${{ secrets.VITE_BACKEND_API_URL_WS }}
+
+      # --- Configure AWS credentials ---
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-      
-      - name: Install Amplify CLI
-        run: npm install -g @aws-amplify/cli
-      
-      - name: Deploy to Amplify
-        working-directory: ./frontend
+
+      # --- Deploy frontend to S3 ---
+      - name: Deploy to S3
         run: |
-          amplify pull --appId $AWS_AMPLIFY_APP_ID --yes
-          amplify publish --yes
-        env:
-          AWS_AMPLIFY_APP_ID: ${{ secrets.AWS_AMPLIFY_APP_ID }}
-          
+          aws s3 sync frontend/dist/ "s3://${{ secrets.AWS_S3_BUCKET_NAME }}" --delete
+
+      # --- Invalidate CloudFront cache ---
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
