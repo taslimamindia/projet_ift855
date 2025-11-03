@@ -26,9 +26,9 @@ jobs:
         working-directory: ./frontend
         run: npm run build
 
-      - name: Run tests
+      - name: Run tests (CI mode)
         working-directory: ./frontend
-        run: npm test -- --ci --watchAll=false
+        run: npm run test:ci
 
   validate-merge:
     needs: build-and-test
