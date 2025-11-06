@@ -1,4 +1,5 @@
 # from typing import Union
+import re
 from fastapi import FastAPI, WebSocket
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -6,7 +7,7 @@ import tldextract
 
 from config import *
 from outils.dataset import Data
-from outils.filesmanager import FileManager
+from outils.filesmanager import FileManager, AWSFileManager
 from outils.webcrawling import Crawling
 from models.embeddings import Embeddings
 from models.faissmanager import Faiss
@@ -36,6 +37,7 @@ class Model:
     faiss: Faiss = None
     llm: Fireworks_LLM = None
     rag_langchain: LangChainRAGAgent = None
+    aws_file: AWSFileManager = None
 
 
 def create_model(settings: Settings):
@@ -48,50 +50,56 @@ def create_model(settings: Settings):
     model.faiss = Faiss(model.data, model.embeddings)
     model.llm = Fireworks_LLM(model.data, settings.model_llm_name, settings.deployment_type)
     model.rag_langchain = LangChainRAGAgent(model.data, model.faiss, model.llm)
+    model.aws_file = AWSFileManager(
+        data=model.data,
+        base_prefix=settings.base_prefix,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+        aws_region=settings.aws_region,
+        aws_s3_bucket_name=settings.aws_s3_bucket_name_backend
+    )
 
     return model
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the ML model
+    """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
+
     model = create_model(settings)
-    model.data.documents = model.file.load_texts_from_json("./datasets/crawled_data.json")
-    model.file.load_embeddings("./datasets/")
-    model.data.chunks = model.file.load_texts_from_json("./datasets/crawled_chunks.json")
-    model.data.sources = model.file.load_texts_from_json("./datasets/crawled_sources.json")
+    model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
+    model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
+    model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
+    model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
     model.faiss.create_faiss_index()
     model.data.documents_language = "french"
     model.data.query_language = "french"
 
     app.state.model = model
     app.state.models = {}
-
     
     yield
     
-    # Clean up the ML models and release the resources
     model = None
 
 
 app = FastAPI(lifespan=lifespan)
 
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+if settings.env.lower() == "env":
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-# Autoriser tous les domaines, méthodes et headers
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],       # Autorise toutes les origines
-    allow_credentials=True,    # Autorise les cookies / credentials
-    allow_methods=["*"],       # Autorise toutes les méthodes (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],       # Autorise tous les headers (Content-Type, Authorization, etc.)
-)
 
 @app.get("/")
 def root():
-    return {"message": "CORS activé pour tout le monde !"}
+    return {"message": "API is running. Visit /docs for API documentation."}
 
 
 @dataclass
@@ -122,7 +130,27 @@ def extract_domain(url: str) -> str:
         str: The extracted domain.
     """
     ext = tldextract.extract(url)
-    return f"{ext.domain}.{ext.suffix}"
+    return f"{ext.domain}_{ext.suffix}"
+
+
+def extract_aws_folder_path(url: str) -> str:
+    """Extract the AWS folder path from a given URL.
+
+    Args:
+        url (str): The input URL.
+
+    Returns:
+        str: The extracted AWS folder path.
+    """
+    
+    name = re.sub(r'[^A-Za-z0-9]+', '_', url)
+    name = name.replace("_", "")
+
+    if not name:
+        raise ValueError("Could not extract domain from URL.")
+    
+    return name.lower()
+
 
 
 @app.websocket("/api/pipeline/initializing")
@@ -137,9 +165,18 @@ async def websocket_initialization(ws: WebSocket):
         return
 
     domain = extract_domain(url)
+    aws_folder_path = extract_aws_folder_path(url)
     model = create_model(settings)
-    app.state.models[domain] = model
-    await ws.send_json({"step": "initializing", "status": "done"})
+    app.state.models[aws_folder_path] = model
+    if model.aws_file.create_folder_in_aws(aws_folder_path, True):
+        meta_data = {"domain": domain, "url": url, "aws_folder_path": aws_folder_path}
+        if model.aws_file.upload_file_in_aws("metadata", meta_data, type_file="json") is not True:
+            await ws.send_json({"step": "initializing", "status": "failed", "error": "Failed to upload metadata to AWS"})
+            await ws.close()
+            return
+        await ws.send_json({"step": "initializing", "status": "done"})
+    else:
+        await ws.send_json({"step": "initializing", "status": "failed", "error": "Failed to create folder in AWS"})
     await ws.close()
 
 
@@ -150,21 +187,25 @@ async def websocket_crawling(ws: WebSocket):
     max_depth = int(data.get("max_depth", 250))
     print(f"Max depth received: {max_depth}")
     url = data.get("url", None)
+
     if not url or not max_depth:
         await ws.send_json({"step": "crawling", "status": "failed", "error": "URL and max_depth are required"})
         await ws.close()
         return
-
-    # proceed with crawling when URL is provided
     else:
-        model = app.state.models.get(extract_domain(url), None)
+        aws_folder_path = extract_aws_folder_path(url)
+        model = app.state.models.get(aws_folder_path, None)
+
         if model is None:
             await ws.send_json({"step": "crawling", "status": "failed", "error": "Model not initialized for this domain"})
             await ws.close()
             return
         model.crawling.crawl(url, max_depth=max_depth)
         model.data.documents = model.crawling.texts
-        await ws.send_json({"step": "crawling", "status": "done"})
+        if model.aws_file.upload_file_in_aws("crawled_data", model.data.documents, type_file="json") is True:
+            await ws.send_json({"step": "crawling", "status": "done"})
+        else:
+            await ws.send_json({"step": "crawling", "status": "failed", "error": "Failed to upload crawled data to AWS"})
         await ws.close()
 
 
@@ -180,7 +221,7 @@ async def websocket_embedding(ws: WebSocket):
 
     # proceed with embedding when URL is provided
     else:
-        model = app.state.models.get(extract_domain(url), None)
+        model = app.state.models.get(extract_aws_folder_path(url), None)
         
         if model is None:
             await ws.send_json({"step": "embedding", "status": "failed", "error": "Model not initialized for this domain"})
@@ -188,10 +229,25 @@ async def websocket_embedding(ws: WebSocket):
             return
         
         model.embeddings.chunking()
+        if model.aws_file.upload_file_in_aws("crawled_chunks", model.data.chunks, type_file="json") is not True:
+            await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload chunks to AWS"})
+            await ws.close()
+            return
+            
         # await asyncio.to_thread(model.embeddings.flat_chunks_and_sources)
         model.embeddings.flat_chunks_and_sources()
+        if model.aws_file.upload_file_in_aws("crawled_sources", model.data.sources, type_file="json") is not True:
+            await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload sources to AWS"})
+            await ws.close()
+            return
+
         # await asyncio.to_thread(model.embeddings.fireworks_embeddings)
         model.embeddings.fireworks_embeddings()
+        if model.aws_file.upload_file_in_aws("embeddings", model.data.embeddings, type_file="npy") is not True:
+            await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload embeddings to AWS"})
+            await ws.close()
+            return
+
         await ws.send_json({"step": "embedding", "status": "done"})
         await ws.close()
 
@@ -206,10 +262,8 @@ async def websocket_indexing(ws: WebSocket):
         await ws.send_json({"step": "indexing", "status": "failed", "error": "URL is required"})
         await ws.close()
         return
-
-    # proceed with indexing when URL is provided
     else:
-        model = app.state.models.get(extract_domain(url), None)
+        model = app.state.models.get(extract_aws_folder_path(url), None)
         model.faiss.create_faiss_index()
         await ws.send_json({"step": "indexing", "status": "done"})
         await ws.close()
@@ -235,11 +289,11 @@ async def chat_rag(datarequest: DataRequest):
         if not datarequest.url:
             model = app.state.model
         else:
-            domain = extract_domain(datarequest.url)
-            model = app.state.models.get(domain, None)
+            aws_folder_path = extract_aws_folder_path(datarequest.url)
+            model = app.state.models.get(aws_folder_path, None)
             if model is None:
-                raise ValueError(f"No model found for domain: {domain}")
-        
+                raise ValueError(f"No model found for domain: {aws_folder_path}")
+
         if model is None or model.data is None:
             raise ValueError("No default model found or initialized.")
         else:
