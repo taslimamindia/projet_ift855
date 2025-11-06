@@ -22,3 +22,8 @@ class Settings(BaseSettings):
     model_llm_name: str = Field(..., env="MODEL_LLM_NAME")
     deployment_type: str = Field(..., env="DEPLOYMENT_TYPE")
     environment: str = Field("env", env="ENVIRONMENT")
+    aws_access_key_id: str = Field(..., env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(..., env="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(..., env="AWS_REGION")
+    aws_s3_bucket_name_backend: str = Field(..., env="AWS_S3_BUCKET_NAME_BACKEND")
+    base_prefix: str = Field("project_ift855/datasets/", env="BASE_PREFIX")
