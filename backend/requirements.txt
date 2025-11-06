@@ -1,18 +1,51 @@
-numpy
-pandas
-beautifulsoup4
-tiktoken
-faiss-cpu
-boto3
-tldextract
-trafilatura 
-fastapi[standard]
-uvicorn
-pydantic
-langchain
-fireworks-ai
-pydantic-settings
-tqdm
-langid
-pycountry
-clearml
+# === Base utilities ===
+PyYAML==6.0.2
+tqdm==4.66.5
+langid==1.1.6
+pycountry==24.6.1
+python-dotenv==1.0.1
+
+# === Data & numerics ===
+numpy==1.26.4
+pandas==2.2.3
+
+# === Web crawling / parsing ===
+beautifulsoup4==4.12.3
+trafilatura==1.7.0
+tldextract==5.1.2
+
+# === FastAPI backend ===
+fastapi[standard]==0.115.4
+uvicorn[standard]==0.32.0
+
+# === AWS SDK ===
+boto3==1.35.80
+
+# === Vector store ===
+faiss-cpu==1.8.0.post1
+
+# === LangChain ecosystem (RAG, LLMOps, Fireworks) ===
+langchain==0.3.12
+langchain-core==0.3.26
+langchain-community==0.3.12
+fireworks-ai==0.19.12
+
+# === Config & schema ===
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# === NLP / Evaluation ===
+evaluate==0.4.3
+bert-score==0.3.13
+nltk==3.9.1
+matplotlib==3.9.2
+
+# === Transformers / Deep learning ===
+transformers==4.45.2
+torch==2.4.1
+
+# === MLOps & experiment tracking ===
+clearml==1.16.4
+
+# === Testing ===
+pytest==8.3.3
