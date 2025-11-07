@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 import numpy as np
 import faiss
 
@@ -40,7 +41,7 @@ class Data:
     chunks: list = None
     sources: list = None
     embeddings: np.ndarray = None
-    index: any = None
+    index: Any = None
     fireworks_api_key: str = None
     documents_language: str = None
     query_language: str = None
