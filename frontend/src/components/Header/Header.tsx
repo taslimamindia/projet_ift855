@@ -14,19 +14,12 @@ const LinkedInIcon = () => (
   </svg>
 );
 
-// const PhoneIcon = () => (
-//   <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-//     <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2a1 1 0 01.95-.27c1.05.27 2.2.42 3.4.42a1 1 0 011 1V20a1 1 0 01-1 1C10.07 21 3 13.93 3 5a1 1 0 011-1h3.5a1 1 0 011 1c0 1.2.15 2.35.42 3.4a1 1 0 01-.27.95l-2.03 2.44z"/>
-//   </svg>
-// );
-
 const MailIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
   </svg>
 );
 
-// Note: using Bootstrap icons <i class="bi bi-globe"></i> for the site link (CSS provided by bootstrap-icons)
 
 const Header: React.FC = () => {
   return (
@@ -35,10 +28,8 @@ const Header: React.FC = () => {
         <div className="container-fluid">
 
           <Link to="/" className={`navbar-brand d-flex align-items-center ${styles.brand}`}>
-            {/* Logo file expected at public/img/logo.svg (recommended SVG) */}
             <img src={"/img/logo.png"} alt="Logo" className={styles.logo} />
           </Link>
-          {/* navigation items: icons + site link (on desktop centered via CSS, on mobile inside the dropdown) */}
           <NavItems />
         </div>
       </nav>
@@ -46,9 +37,7 @@ const Header: React.FC = () => {
   );
 };
 
-/*
-  Extracted nav items into a small component to use hook state for mobile toggle
-*/
+
 const NavItems: React.FC = () => {
   const [open, setOpen] = useState(false);
 
@@ -69,7 +58,6 @@ const NavItems: React.FC = () => {
       </button>
 
       <div className={`${styles.navItems} ${open ? styles.open : ''}`} role="menu">
-        {/* Mobile-only copy of the site link (desktop shows the centered one) */}
         <a
           href="https://mamadou.kassatech.org"
           className={`${styles.githubLink} ${styles.centerDesktop} ${styles.mobileSiteLink}`}
