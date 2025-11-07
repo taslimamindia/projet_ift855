@@ -11,6 +11,9 @@ const CustomChat: React.FC = () => {
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const url = params.get('url') || '';
+  const rawMaxDepth = params.get('max_depth');
+  const parsed = rawMaxDepth ? Number(rawMaxDepth) : NaN;
+  const maxDepth = Number.isFinite(parsed) ? Math.max(50, Math.min(1000, Math.trunc(parsed))) : 250;
 
   const [pipelineDone, setPipelineDone] = useState(false);
   const [pipelineFailed, setPipelineFailed] = useState(false);
@@ -61,6 +64,7 @@ const CustomChat: React.FC = () => {
           undefined,
           setCurrentStep,
           setPipelineDone,
+          maxDepth,
         );
 
         if (!mounted) return;
@@ -96,7 +100,7 @@ const CustomChat: React.FC = () => {
         )}
 
         {pipelineDone && !pipelineFailed && (
-          <ChatInterface url={url} suggestions={[]} />
+          <ChatInterface url={url} suggestions={[]} maxDepth={maxDepth} />
         )}
       </div>
     </div>
