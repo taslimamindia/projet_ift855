@@ -4,7 +4,9 @@ import styles from './Home.module.scss';
 
 const Home: React.FC = () => {
   const [url, setUrl] = useState('');
+  const [maxDepth, setMaxDepth] = useState<number>(250);
   const navigate = useNavigate();
+  
 
   const handleGovClick = () => {
     navigate('/chat/gov/gn');
@@ -13,26 +15,34 @@ const Home: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (url.trim()) {
-      navigate(`/chat/custom?url=${encodeURIComponent(url)}`);
+      const clamped = Math.max(50, Math.min(1000, Number(maxDepth) || 250));
+      navigate(`/chat/custom?url=${encodeURIComponent(url)}&max_depth=${clamped}`);
     }
   };
 
+  
   return (
     <div className={`container ${styles.homeContainer}`}>
       <h1 className="text-center mt-5">Bienvenue sur le Chat Data Explorer</h1>
-      <p className="lead text-center mb-5">
+      <p className={`lead text-center mb-5 ${styles.paragraph}`}>
         Choisissez une source de données pour démarrer votre session de chat.
       </p>
 
-      <div className="row justify-content-center">
-        <div className="col-md-6 mb-4">
+      <div className={`row justify-content-center ${styles.equalHeightRow}`}>
+        <div id='comp1' className="col-md-6 mb-4">
           <div className={`card shadow-sm h-100 ${styles.card}`}>
             <div className="card-body text-center">
               <h5 className={styles.cardTitle}>📊 Site du gouvernement de la Guinée</h5>
-              <p className={styles.cardText}>
+              <p className={`${styles.cardText} ${styles.paragraph}`}>
                 Utilisez ce modèle pour explorer les données officielles de la Guinée.
               </p>
-              
+            </div>
+            <div className={styles.govImageWrapper}>
+              <img
+                src="/img/republique-de-guinee.jpg"
+                alt="République de Guinée"
+                className={styles.govImage}
+              />
             </div>
             <div className='card-footer text-center'>
               <button className="btn btn-primary" onClick={handleGovClick}>
@@ -42,30 +52,50 @@ const Home: React.FC = () => {
           </div>
         </div>
 
-        <div className="col-md-6 mb-4">
-          <form onSubmit={handleSubmit}>
+        <div id='comp2' className="col-md-6 mb-4">
+          <form className='h-100' onSubmit={handleSubmit}>
             <div className={`card shadow-sm h-100 ${styles.card}`}>
               <div className="card-body text-center">
                 <h5 className={styles.cardTitle}>🌐 Fournir une URL</h5>
-                <p className={styles.cardText}>
+                <p className={`${styles.cardText} ${styles.paragraph}`}>
                   Entrez l’adresse d’un site web pour crawler ses données et discuter avec l'AI.
                 </p>
                 
+                <input
+                  id="url"
+                  type="url"
+                  placeholder="https://"
+                  className="form-control mb-3"
+                  value={url}
+                  onChange={(e) => {
+                    let value = e.target.value;
+                    if (!value.startsWith("https://")) {
+                      value = "https://";
+                    }
+                    setUrl(value);
+                  }}
+                  required
+                />  
+                <div className="mb-3 text-start">
+                  <label htmlFor="maxDepth" className={`form-label ${styles.paragraph}`}>Nombre maximal de pages à crawler</label>
                   <input
-                    id="url"
-                    type="url"
-                    placeholder="https://"
-                    className="form-control mb-3"
-                    value={url}
+                    id="maxDepth"
+                    type="number"
+                    className="form-control"
+                    value={maxDepth}
+                    min={50}
+                    max={1000}
                     onChange={(e) => {
-                      let value = e.target.value;
-                      if (!value.startsWith("https://")) {
-                        value = "https://";
-                      }
-                      setUrl(value);
+                      let v = Number(e.target.value);
+                      if (Number.isNaN(v)) v = 250;
+                      v = Math.max(50, Math.min(1000, Math.trunc(v)));
+                      setMaxDepth(v);
                     }}
-                    required
-                  />                
+                    aria-describedby="maxDepthHelp"
+                  />
+                  <div id="maxDepthHelp" className={`form-text ${styles.paragraphSmall}`}>Intervalle autorisé : 50 à 1000 pages — valeur par défaut : 250</div>
+                </div>
+
               </div>
               <div className='card-footer text-center'>
                 <button type="submit" className="btn btn-primary">
@@ -75,9 +105,9 @@ const Home: React.FC = () => {
             </div>
           </form>
         </div>
-      </div>
+  </div>
 
-      <div className={styles.githubInlineWrapper}>
+  <div className={styles.githubInlineWrapper}>
         <a
           href="https://github.com/taslimamindia/projet_ift855"
           className={`${styles.githubLink} ${styles.githubInline}`}
@@ -96,9 +126,9 @@ const Home: React.FC = () => {
           </svg>
           <span className={styles.githubLabel}>Voir le projet</span>
         </a>
-      </div>
+  </div>
 
-      <div className={styles.diagramContainer}>
+  <div className={styles.diagramContainer}>
         <img
           src="/img/diagrammeRAG.jpg"
           alt="Diagramme RAG"
