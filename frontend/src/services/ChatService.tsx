@@ -4,6 +4,7 @@ interface ChatRequestPayload {
   query: string;
   url: string;
   mode: string;
+  max_depth?: number;
 }
 
 export async function sendQueryToBackend(payload: ChatRequestPayload): Promise<ChatResponse> {
