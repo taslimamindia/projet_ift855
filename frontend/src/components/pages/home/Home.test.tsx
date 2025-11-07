@@ -33,6 +33,6 @@ describe('Home component', () => {
     const submitBtn = screen.getByRole('button', { name: /Lancer le Chat/i })
     await userEvent.click(submitBtn)
 
-    expect(navigateMock).toHaveBeenCalledWith('/chat/custom?url=' + encodeURIComponent('https://example.com'))
+    expect(navigateMock).toHaveBeenCalledWith('/chat/custom?url=' + encodeURIComponent('https://example.com') + '&max_depth=250')
   })
 })
