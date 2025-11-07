@@ -1,8 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-
-// Mock useNavigate from react-router-dom
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
@@ -29,8 +27,7 @@ describe('Home component', () => {
   it('submits custom url and navigates to custom chat with encoded url', async () => {
     render(<Home />)
     const input = screen.getByPlaceholderText('https://') as HTMLInputElement
-    // Simulate entering a full https URL
-    fireEvent.change(input, { target: { value: 'https://example.com' } })
+  fireEvent.change(input, { target: { value: 'https://example.com' } })
     expect(input.value).toContain('https://example.com')
 
     const submitBtn = screen.getByRole('button', { name: /Lancer le Chat/i })
