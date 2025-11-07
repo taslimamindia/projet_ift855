@@ -2,6 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { Message } from '../../types/Chat';
 import { sendQueryToBackend } from '../../services/ChatService';
 import styles from './ChatInterface.module.scss';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 
 type ChatInterfaceProps = {
@@ -60,6 +65,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     handleSend(text);
   };
 
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -97,7 +103,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             >
               {msg.sender === 'user' ? 'Vous' : 'IA'}
             </span>
-            {msg.text}
+            {msg.sender === 'ai' ? (
+              <div className={styles.markdown}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkMath, remarkGfm]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {msg.text}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <span>{msg.text}</span>
+            )}
           </div>
         ))}
         {loading && (
