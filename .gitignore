@@ -1,9 +1,8 @@
 .venv/
 
-# Ignorer les fichiers compilés Python
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Ignorer tous les fichiers qui contient un .old
 *.old*
+
