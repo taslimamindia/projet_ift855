@@ -3,6 +3,12 @@ from fireworks.client import Fireworks
 from outils.dataset import Data
 import numpy as np
 from tqdm import tqdm
+import logging
+
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
 
 class Embeddings:
@@ -96,7 +102,7 @@ class Embeddings:
         chunks = [self.data.chunks[i * dividend: (i + 1) * dividend] for i in range(q)]
         if r > 0:
             chunks.append(self.data.chunks[q * dividend: q * dividend + r])
-        print(reversed([len(c) for c in chunks]))
+        logger.debug(f"chunks sizes: {[len(c) for c in chunks]}")
 
         with Fireworks(api_key=self.data.fireworks_api_key) as fw:
             for chunk in tqdm(chunks, desc="Generating embeddings", colour="green"):

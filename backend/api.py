@@ -1,9 +1,9 @@
-# from typing import Union
 import re
 from fastapi import FastAPI, WebSocket
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 import tldextract
+import logging
 
 from config import *
 from outils.dataset import Data
@@ -14,6 +14,10 @@ from models.faissmanager import Faiss
 from models.LLM import Fireworks_LLM
 from models.RAG import LangChainRAGAgent
 from load_settings import settings
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
 
 @dataclass
@@ -85,16 +89,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
 if settings.env.lower() == "env":
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    logger.info("CORS middleware added for development environment.")
+else:
+    logger.info("Production environment detected; CORS middleware not added, it will be managed by nginx proxy.")
 
 
 @app.get("/")
@@ -152,13 +158,12 @@ def extract_aws_folder_path(url: str) -> str:
     return name.lower()
 
 
-
 @app.websocket("/api/pipeline/initializing")
 async def websocket_initialization(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
-    url = data.get("url", None)
 
+    url = data.get("url", None)
     if not url:
         await ws.send_json({"step": "initializing", "status": "failed", "error": "URL is required"})
         await ws.close()
@@ -185,9 +190,8 @@ async def websocket_crawling(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
     max_depth = int(data.get("max_depth", 250))
-    print(f"Max depth received: {max_depth}")
-    url = data.get("url", None)
 
+    url = data.get("url", None)
     if not url or not max_depth:
         await ws.send_json({"step": "crawling", "status": "failed", "error": "URL and max_depth are required"})
         await ws.close()
@@ -213,13 +217,12 @@ async def websocket_crawling(ws: WebSocket):
 async def websocket_embedding(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
+
     url = data.get("url", None)
     if not url:
         await ws.send_json({"step": "embedding", "status": "failed", "error": "URL is required"})
         await ws.close()
         return
-
-    # proceed with embedding when URL is provided
     else:
         model = app.state.models.get(extract_aws_folder_path(url), None)
         
@@ -234,14 +237,12 @@ async def websocket_embedding(ws: WebSocket):
             await ws.close()
             return
             
-        # await asyncio.to_thread(model.embeddings.flat_chunks_and_sources)
         model.embeddings.flat_chunks_and_sources()
         if model.aws_file.upload_file_in_aws("crawled_sources", model.data.sources, type_file="json") is not True:
             await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload sources to AWS"})
             await ws.close()
             return
 
-        # await asyncio.to_thread(model.embeddings.fireworks_embeddings)
         model.embeddings.fireworks_embeddings()
         if model.aws_file.upload_file_in_aws("embeddings", model.data.embeddings, type_file="npy") is not True:
             await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload embeddings to AWS"})

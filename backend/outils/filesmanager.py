@@ -8,6 +8,12 @@ import json
 from langchain_core.documents import Document
 import tempfile
 from typing import Literal
+import logging
+
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
 
 
@@ -123,10 +129,10 @@ class AWSFileManager(FileManager):
             return True
 
         except ClientError as e:
-            print(f"AWS error creating folder '{path}': {e.response.get('Error', {}).get('Message', str(e))}")
+            logger.error(f"AWS error creating folder '{path}': {e.response.get('Error', {}).get('Message', str(e))}")
             raise
         except Exception as e:
-            print(f"Unexpected error creating folder '{path}': {e}")
+            logger.exception(f"Unexpected error creating folder '{path}': {e}")
             raise
 
     def upload_file_in_aws(self, key: str, 
@@ -222,13 +228,13 @@ class AWSFileManager(FileManager):
             # Upload the temporary file to S3
             try:
                 self.s3.upload_file(tmp_path, self.bucket_name, full_key, ExtraArgs={"ContentType": content_type})
-                print(f"[DEBUG] upload succeeded for s3://{self.bucket_name}/{full_key}")
+                logger.debug(f"[DEBUG] upload succeeded for s3://{self.bucket_name}/{full_key}")
                 # On success, remove the temporary file
                 try:
                     os.remove(tmp_path)
                 except Exception:
                     # If cleanup fails, don't fail the upload — just warn
-                    print(f"Warning: failed to remove temporary file {tmp_path}")
+                    logger.warning(f"Warning: failed to remove temporary file {tmp_path}")
                 return True
             except ClientError as e:
                 # Do not remove temp file; keep it for inspection
@@ -273,7 +279,7 @@ class AWSFileManager(FileManager):
 
         # Build full_key
         full_key = ((self.base_prefix.rstrip("/") + "/" if key else "") or "") + key + f".{detected_type}"
-        print(f"[DEBUG] download_file_from_aws full_key: {full_key}")
+        logger.debug(f"[DEBUG] download_file_from_aws full_key: {full_key}")
 
         try:
             # Download the file to a temporary location
@@ -299,8 +305,8 @@ class AWSFileManager(FileManager):
             return content
 
         except ClientError as e:
-            print(f"AWS error downloading file '{full_key}': {e.response.get('Error', {}).get('Message', str(e))}")
+            logger.error(f"AWS error downloading file '{full_key}': {e.response.get('Error', {}).get('Message', str(e))}")
             raise
         except Exception as e:
-            print(f"Unexpected error downloading file '{full_key}': {e}")
+            logger.exception(f"Unexpected error downloading file '{full_key}': {e}")
             raise
