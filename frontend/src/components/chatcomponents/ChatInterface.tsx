@@ -7,11 +7,13 @@ import styles from './ChatInterface.module.scss';
 type ChatInterfaceProps = {
   url: string;
   suggestions: string[];
+  maxDepth?: number;
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   url,
   suggestions,
+  maxDepth,
 }) => {
   const [query, setQuery] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -28,11 +30,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setLoading(true);
     setShowSuggestions(false);
 
-    try {
+      try {
       const data = await sendQueryToBackend({
         query: finalQuery,
         url: url,
-        mode: 'default'
+        mode: 'default',
+        max_depth: maxDepth,
       });
 
       const aiMessage: Message = {
