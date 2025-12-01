@@ -5,4 +5,5 @@ __pycache__/
 *$py.class
 
 *.old*
+ec2_manager/
 
