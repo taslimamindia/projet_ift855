@@ -1,4 +1,8 @@
 import re
+import sys
+import asyncio
+import subprocess
+import os
 from fastapi import FastAPI, WebSocket
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -42,6 +46,22 @@ class Model:
     llm: Fireworks_LLM = None
     rag_langchain: LangChainRAGAgent = None
     aws_file: AWSFileManager = None
+
+
+def run_clearml_step(step: str, url: str, extra_args: list = None):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    script_path = os.path.join(current_dir, "clearml_pipeline.py")
+    
+    cmd_args = ["--step", step, "--url", url]
+    if extra_args:
+        cmd_args.extend(extra_args)
+        
+    return subprocess.run(
+        [sys.executable, script_path] + cmd_args,
+        capture_output=True,
+        text=True,
+        encoding='utf-8'
+    )
 
 
 def create_model(settings: Settings):
@@ -169,19 +189,19 @@ async def websocket_initialization(ws: WebSocket):
         await ws.close()
         return
 
-    domain = extract_domain(url)
-    aws_folder_path = extract_aws_folder_path(url)
-    model = create_model(settings)
-    app.state.models[aws_folder_path] = model
-    if model.aws_file.create_folder_in_aws(aws_folder_path, True):
-        meta_data = {"domain": domain, "url": url, "aws_folder_path": aws_folder_path}
-        if model.aws_file.upload_file_in_aws("metadata", meta_data, type_file="json") is not True:
-            await ws.send_json({"step": "initializing", "status": "failed", "error": "Failed to upload metadata to AWS"})
-            await ws.close()
-            return
+    # Run ClearML task in subprocess using run_in_executor to avoid Windows loop issues
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, run_clearml_step, "initializing", url, None)
+
+    if result.returncode == 0:
+        aws_folder_path = extract_aws_folder_path(url)
+        model = create_model(settings)
+        model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
+        app.state.models[aws_folder_path] = model
         await ws.send_json({"step": "initializing", "status": "done"})
     else:
-        await ws.send_json({"step": "initializing", "status": "failed", "error": "Failed to create folder in AWS"})
+        logger.error(f"Initializing failed: {result.stderr}")
+        await ws.send_json({"step": "initializing", "status": "failed", "error": result.stderr})
     await ws.close()
 
 
@@ -196,21 +216,22 @@ async def websocket_crawling(ws: WebSocket):
         await ws.send_json({"step": "crawling", "status": "failed", "error": "URL and max_depth are required"})
         await ws.close()
         return
-    else:
+    
+    # Run ClearML task in subprocess
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, run_clearml_step, "crawling", url, ["--max_depth", str(max_depth)])
+
+    if result.returncode == 0:
         aws_folder_path = extract_aws_folder_path(url)
         model = app.state.models.get(aws_folder_path, None)
-
-        if model is None:
-            await ws.send_json({"step": "crawling", "status": "failed", "error": "Model not initialized for this domain"})
-            await ws.close()
-            return
-        model.crawling.crawl(url, max_depth=max_depth)
-        model.data.documents = model.crawling.texts
-        if model.aws_file.upload_file_in_aws("crawled_data", model.data.documents, type_file="json") is True:
-            await ws.send_json({"step": "crawling", "status": "done"})
-        else:
-            await ws.send_json({"step": "crawling", "status": "failed", "error": "Failed to upload crawled data to AWS"})
-        await ws.close()
+        if model:
+            # Reload data from S3
+            model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
+        await ws.send_json({"step": "crawling", "status": "done"})
+    else:
+        logger.error(f"Crawling failed: {result.stderr}")
+        await ws.send_json({"step": "crawling", "status": "failed", "error": result.stderr})
+    await ws.close()
 
 
 @app.websocket("/api/pipeline/embedding")
@@ -223,34 +244,24 @@ async def websocket_embedding(ws: WebSocket):
         await ws.send_json({"step": "embedding", "status": "failed", "error": "URL is required"})
         await ws.close()
         return
-    else:
-        model = app.state.models.get(extract_aws_folder_path(url), None)
-        
-        if model is None:
-            await ws.send_json({"step": "embedding", "status": "failed", "error": "Model not initialized for this domain"})
-            await ws.close()
-            return
-        
-        model.embeddings.chunking()
-        if model.aws_file.upload_file_in_aws("crawled_chunks", model.data.chunks, type_file="json") is not True:
-            await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload chunks to AWS"})
-            await ws.close()
-            return
-            
-        model.embeddings.flat_chunks_and_sources()
-        if model.aws_file.upload_file_in_aws("crawled_sources", model.data.sources, type_file="json") is not True:
-            await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload sources to AWS"})
-            await ws.close()
-            return
 
-        model.embeddings.fireworks_embeddings()
-        if model.aws_file.upload_file_in_aws("embeddings", model.data.embeddings, type_file="npy") is not True:
-            await ws.send_json({"step": "embedding", "status": "failed", "error": "Failed to upload embeddings to AWS"})
-            await ws.close()
-            return
+    # Run ClearML task in subprocess
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, run_clearml_step, "embedding", url, None)
 
+    if result.returncode == 0:
+        aws_folder_path = extract_aws_folder_path(url)
+        model = app.state.models.get(aws_folder_path, None)
+        if model:
+            # Reload data from S3
+            model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
+            model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
+            model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
         await ws.send_json({"step": "embedding", "status": "done"})
-        await ws.close()
+    else:
+        logger.error(f"Embedding failed: {result.stderr}")
+        await ws.send_json({"step": "embedding", "status": "failed", "error": result.stderr})
+    await ws.close()
 
 
 @app.websocket("/api/pipeline/indexing")
@@ -263,11 +274,22 @@ async def websocket_indexing(ws: WebSocket):
         await ws.send_json({"step": "indexing", "status": "failed", "error": "URL is required"})
         await ws.close()
         return
-    else:
-        model = app.state.models.get(extract_aws_folder_path(url), None)
-        model.faiss.create_faiss_index()
+
+    # Run ClearML task in subprocess
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, run_clearml_step, "indexing", url, None)
+
+    if result.returncode == 0:
+        aws_folder_path = extract_aws_folder_path(url)
+        model = app.state.models.get(aws_folder_path, None)
+        if model:
+            # Recreate index locally
+            model.faiss.create_faiss_index()
         await ws.send_json({"step": "indexing", "status": "done"})
-        await ws.close()
+    else:
+        logger.error(f"Indexing failed: {result.stderr}")
+        await ws.send_json({"step": "indexing", "status": "failed", "error": result.stderr})
+    await ws.close()
 
 
 @app.post("/api/chat/rag")

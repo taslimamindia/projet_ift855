@@ -106,7 +106,6 @@ class LangChainRAGAgent:
         llm = FireworksLangChain(fw_llm=self.fw_llm)
         retriever = FaissRetriever(faiss=self.faiss, data=self.data, k=k, fw_llm=self.fw_llm)
 
-        # Create a RetrievalQA chain; return source documents to expose provenance
         try:
             merged_query = f"{query}\n\nPrevious Answer: {self.last_answer}"
 

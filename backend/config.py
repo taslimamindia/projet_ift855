@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     aws_region: str = Field(..., env="AWS_REGION")
     aws_s3_bucket_name_backend: str = Field(..., env="AWS_S3_BUCKET_NAME_BACKEND")
     base_prefix: str = Field("project_ift855/datasets/", env="BASE_PREFIX")
+    
+    # ClearML Configuration
+    clearml_web_host: str = Field(None, env="CLEARML_WEB_HOST")
+    clearml_api_host: str = Field(None, env="CLEARML_API_HOST")
+    clearml_files_host: str = Field(None, env="CLEARML_FILES_HOST")
+    clearml_api_access_key: str = Field(None, env="CLEARML_API_ACCESS_KEY")
+    clearml_api_secret_key: str = Field(None, env="CLEARML_API_SECRET_KEY")
 
     model_config = {
         "protected_namespaces": ("settings_",)
@@ -36,7 +43,12 @@ class Settings(BaseSettings):
             aws_secret_access_key={mask(self.aws_secret_access_key)},
             aws_region={self.aws_region},
             aws_s3_bucket_name_backend={self.aws_s3_bucket_name_backend},
-            base_prefix={self.base_prefix}
+            base_prefix={self.base_prefix},
+            clearml_web_host={self.clearml_web_host},
+            clearml_api_host={self.clearml_api_host},
+            clearml_files_host={self.clearml_files_host},
+            clearml_api_access_key={mask(self.clearml_api_access_key)},
+            clearml_api_secret_key={mask(self.clearml_api_secret_key)}
         )
         """
 
