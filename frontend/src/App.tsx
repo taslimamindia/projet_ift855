@@ -4,6 +4,9 @@ import Home from './components/pages/home/Home';
 import NotFound from './components/pages/errors/NotFound';
 import GovGnChat from './components/pages/chatpage/GovGnChat';
 import CustomChat from './components/pages/chatpage/CustomChat';
+import MemoryMonitor from './components/pages/admin/memory/MemoryMonitor';
+import Login from './components/pages/auth/Login';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import Header from './components/Header/Header';
 
 function App() {
@@ -15,6 +18,13 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/chat/gov/gn" element={<GovGnChat />} />
           <Route path="/chat/custom" element={<CustomChat />} />
+          <Route path="/login" element={<Login />} />
+          
+          {/* Protected Admin Routes */}
+          <Route path="/admin" element={<ProtectedRoute />}>
+            <Route path="memory" element={<MemoryMonitor />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
