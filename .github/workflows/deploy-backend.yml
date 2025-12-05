@@ -42,6 +42,15 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
 
+      # Transition secrets to env vars to avoid type conflict errors
+      - name: Transition secrets to env vars
+        continue-on-error: true
+        run: |
+          gcloud run services update project-ift855-backend --quiet \
+            --region us-east1 \
+            --remove-secrets=ENV,FIREWORKS_API_KEY,MODEL_EMBEDDINGS_NAME,MODEL_LLM_NAME,DEPLOYMENT_TYPE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,AWS_S3_BUCKET_NAME_BACKEND,BASE_PREFIX,CLEARML_WEB_HOST,CLEARML_API_HOST,CLEARML_FILES_HOST,CLEARML_API_ACCESS_KEY,CLEARML_API_SECRET_KEY \
+            --update-env-vars=ENV=transition,FIREWORKS_API_KEY=transition,MODEL_EMBEDDINGS_NAME=transition,MODEL_LLM_NAME=transition,DEPLOYMENT_TYPE=transition,AWS_ACCESS_KEY_ID=transition,AWS_SECRET_ACCESS_KEY=transition,AWS_REGION=transition,AWS_S3_BUCKET_NAME_BACKEND=transition,BASE_PREFIX=transition,CLEARML_WEB_HOST=transition,CLEARML_API_HOST=transition,CLEARML_FILES_HOST=transition,CLEARML_API_ACCESS_KEY=transition,CLEARML_API_SECRET_KEY=transition
+
       # Deploy to Cloud Run
       # This step builds the container from source and deploys it
       - name: Deploy to Cloud Run
