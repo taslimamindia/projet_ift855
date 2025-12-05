@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import styles from './Header.module.scss';
 
 const GitHubIcon = () => (
@@ -17,6 +17,12 @@ const LinkedInIcon = () => (
 const MailIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+  </svg>
+);
+
+const LogoutIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
   </svg>
 );
 
@@ -40,6 +46,14 @@ const Header: React.FC = () => {
 
 const NavItems: React.FC = () => {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    setOpen(false);
+    navigate('/');
+  };
 
   return (
     <>
@@ -71,6 +85,19 @@ const NavItems: React.FC = () => {
           <i className={`bi bi-globe ${styles.githubIcon}`} aria-hidden="true"></i>
           <span className={styles.githubLabel}>Voir mon site</span>
         </a>
+
+        {isAuthenticated && (
+          <button
+            className={styles.iconLink}
+            onClick={handleLogout}
+            aria-label="Se déconnecter"
+            title="Se déconnecter"
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            role="menuitem"
+          >
+            <LogoutIcon />
+          </button>
+        )}
 
         <a
           className={styles.iconLink}
