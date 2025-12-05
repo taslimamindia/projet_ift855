@@ -2,6 +2,8 @@
 
 This project, carried out as part of a research essay at the University of Sherbrooke, implements a complete MLOps approach. Its objective is to develop and deploy an artificial intelligence system capable of answering user questions by leveraging web crawling techniques to automatically extract and process relevant information.
 
+I gratefully acknowledge the guidance and supervision of [Professor Pierre‑Marc Jodoin](https://jodoin.github.io/) throughout this project.
+
 The project covers the full solution lifecycle, including:
 
 - Data acquisition and preprocessing through web crawling.
