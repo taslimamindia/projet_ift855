@@ -52,6 +52,7 @@ jobs:
             "AWS_CLOUDFRONT_DISTRIBUTION_ID"
             "VITE_BACKEND_API_URL"
             "VITE_BACKEND_API_URL_WS"
+            "VITE_ADMIN_PASSWORD"
           )
           for var in "${REQUIRED_VARS[@]}"; do
             if [ -z "${!var:-}" ]; then
@@ -68,6 +69,7 @@ jobs:
           AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
           VITE_BACKEND_API_URL: ${{ secrets.VITE_BACKEND_API_URL }}
           VITE_BACKEND_API_URL_WS: ${{ secrets.VITE_BACKEND_API_URL_WS }}
+          VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
 
       # --- Install dependencies ---
       - name: Install dependencies
