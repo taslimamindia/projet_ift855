@@ -1,0 +1,54 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Authenticate to Google Cloud
+      # Ensure you have added the GCP_CREDENTIALS secret to your GitHub repository
+      # This secret should contain the JSON key of your Service Account
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+      # Deploy to Cloud Run
+      # This step builds the container from source and deploys it
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: project-ift855-backend
+          source: ./backend
+          project_id: project-ift855
+          region: us-east1
+          flags: '--allow-unauthenticated --memory=2Gi'
+          env_vars: |
+            ENV=${{ secrets.ENV }}
+            FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }}
+            MODEL_EMBEDDINGS_NAME=${{ secrets.MODEL_EMBEDDINGS_NAME }}
+            MODEL_LLM_NAME=${{ secrets.MODEL_LLM_NAME }}
+            DEPLOYMENT_TYPE=${{ secrets.DEPLOYMENT_TYPE }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            AWS_REGION=${{ secrets.AWS_REGION }}
+            AWS_S3_BUCKET_NAME_BACKEND=${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
+            BASE_PREFIX=${{ secrets.BASE_PREFIX }}
+            CLEARML_WEB_HOST=${{ secrets.CLEARML_WEB_HOST }}
+            CLEARML_API_HOST=${{ secrets.CLEARML_API_HOST }}
+            CLEARML_FILES_HOST=${{ secrets.CLEARML_FILES_HOST }}
+            CLEARML_API_ACCESS_KEY=${{ secrets.CLEARML_API_ACCESS_KEY }}
+            CLEARML_API_SECRET_KEY=${{ secrets.CLEARML_API_SECRET_KEY }}
