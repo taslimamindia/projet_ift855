@@ -83,6 +83,7 @@ jobs:
         env:
           VITE_BACKEND_API_URL: ${{ secrets.VITE_BACKEND_API_URL }}
           VITE_BACKEND_API_URL_WS: ${{ secrets.VITE_BACKEND_API_URL_WS }}
+          VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
 
       # --- Configure AWS credentials ---
       - name: Configure AWS credentials
