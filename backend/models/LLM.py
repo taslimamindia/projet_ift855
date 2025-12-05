@@ -13,7 +13,6 @@ class Fireworks_LLM:
             model (str, optional): Name of the LLM model. Defaults to "llama4-maverick-instruct-basic".
             deployment_type (str, optional): Deployment type. Defaults to "serverless".
         """
-
         self.data = data
         self.llm = LLM(model=model, deployment_type=deployment_type, api_key=self.data.fireworks_api_key)
 

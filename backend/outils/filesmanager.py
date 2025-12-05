@@ -6,6 +6,15 @@ from botocore.exceptions import ClientError
 from .dataset import Data
 import json
 from langchain_core.documents import Document
+import tempfile
+from typing import Literal
+import logging
+
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
+
 
 
 ######################## Files Operations ###############################
@@ -62,255 +71,242 @@ class FileManager:
 
 ######################### AWS Files Operations ###########################
 class AWSFileManager(FileManager):
-    def __init__(self, data:Data, bucket_name, aws_access_key_id, aws_secret_access_key, base_prefix, region_name="ca-central-1"):
+    def __init__(self, data:Data, 
+                 aws_s3_bucket_name, aws_access_key_id, 
+                 aws_secret_access_key, 
+                 base_prefix, 
+                 aws_region="ca-central-1"):
         super().__init__(data)
         self.s3 = boto3.client(
             "s3",
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
-            region_name=region_name
+            region_name=aws_region,
         )
-        self.bucket_name = bucket_name
+        self.bucket_name = aws_s3_bucket_name
         self.base_prefix = base_prefix.rstrip("/") + "/" if base_prefix else ""
 
-    def create_folder_in_aws(self, folder):
+    def create_folder_in_aws(self, folder, recreate: bool = False) -> bool:
         """
-        Creates an empty folder (prefix) in S3.
+        Create a "folder" (prefix) in S3.
 
         Args:
-        - folder: folder name to create (e.g. 'documents/')
-        """
-        self.s3.put_object(Bucket=self.bucket_name, Key=f"{folder}/")
+            folder (str): folder name (e.g. 'documents' or 'documents/').
+            recreate (bool): if True and the folder exists, delete its contents then recreate it.
+                             if False and the folder exists, do nothing.
 
-    def rename_folder_in_aws(self, old_folder, new_folder):
-        """
-        Renames a folder by copying all objects to a new prefix and deleting the old ones.
-
-        Args:
-        - old_folder: current folder prefix (e.g. 'documents/')
-        - new_folder: new folder prefix (e.g. 'archives/')
-        """
-        objects = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix=old_folder)
-        for obj in objects.get('Contents', []):
-            old_key = obj['Key']
-            new_key = old_key.replace(old_folder, new_folder, 1)
-            self.s3.copy_object(Bucket=self.bucket_name, CopySource={'Bucket': self.bucket_name, 'Key': old_key}, Key=new_key)
-            self.s3.delete_object(Bucket=self.bucket_name, Key=old_key)
-
-    def delete_folder_in_aws(self, folder):
-        """
-        Deletes all objects within a given folder (prefix) in S3.
-
-        Args:
-        - folder: folder prefix to delete (e.g. 'documents/')
-        """
-        objects = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix=folder)
-        for obj in objects.get('Contents', []):
-            self.s3.delete_object(Bucket=self.bucket_name, Key=obj['Key'])
-
-    def upload_file_in_aws(self, key, content):
-        """
-        Uploads a file to S3.
-
-        Args:
-        - key: full S3 path for the file (e.g. 'documents/report.txt')
-        - content: file content as string or bytes
-        """
-        self.s3.put_object(Bucket=self.bucket_name, Key=key, Body=content)
-
-    def rename_file_in_aws(self, old_key, new_key):
-        """
-        Renames a file in S3 by copying and deleting the original.
-
-        Args:
-        - old_key: current file path (e.g. 'documents/old.txt')
-        - new_key: new file path (e.g. 'documents/new.txt')
-        """
-        self.s3.copy_object(Bucket=self.bucket_name, CopySource={'Bucket': self.bucket_name, 'Key': old_key}, Key=new_key)
-        self.s3.delete_object(Bucket=self.bucket_name, Key=old_key)
-
-    def update_file_in_aws(self, key, new_content):
-        """
-        Overwrites the content of an existing file in S3.
-
-        Args:
-        - key: file path in S3 (e.g. 'documents/report.txt')
-        - new_content: new content to write
-        """
-        self.s3.put_object(Bucket=self.bucket_name, Key=key, Body=new_content)
-
-    def delete_file_in_aws(self, key):
-        """
-        Deletes a file from S3.
-
-        Args:
-        - key: file path to delete (e.g. 'documents/report.txt')
-        """
-        self.s3.delete_object(Bucket=self.bucket_name, Key=key)
-
-    def read_file_from_aws(self, key):
-        """
-        Reads the content of a file stored in S3.
-
-        Args:
-        - key: file path to read (e.g. 'documents/report.txt')
-        """
-        try:
-            response = self.s3.get_object(Bucket=self.bucket_name, Key=key)
-            content = response['Body'].read().decode('utf-8')
-            print(f"Content of '{key}':\n{content}")
-            return content
-        except Exception as e:
-            print(f"Error reading file '{key}': {e}")
-            return None
-
-    def list_folder_from_aws(self, prefix):
-        """
-        Lists all files within a given folder (prefix) in S3.
-
-        Args:
-        - prefix: folder prefix to list (e.g. 'documents/')
-        """
-        try:
-            response = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
-            files = [obj['Key'] for obj in response.get('Contents', [])]
-            print(f"Files in folder '{prefix}':")
-            for f in files:
-                print(f" - {f}")
-            return files
-        except Exception as e:
-            print(f"Error listing folder '{prefix}': {e}")
-            return []
-
-    def download_file_from_aws(self, aws_path, local_path):
-        """
-        Downloads a single file from S3 to local disk.
-
-        Args:
-        - aws_path: full S3 path of the file (e.g. 'documents/report.txt')
-        - local_path: local path to save the file (e.g. './report.txt')
-        """
-        try:
-            self.s3.download_file(self.bucket_name, aws_path, local_path)
-            print(f"Downloaded: {aws_path} → {local_path}")
-        except Exception as e:
-            print(f"Error downloading '{aws_path}': {e}")
-
-    def download_folder_from_aws(self, folder, local_folder):
-        """
-        Downloads all files from a given S3 folder (prefix) to a local directory.
-
-        Args:
-        - folder: S3 folder prefix (e.g., 'documents/')
-        - local_folder: local path to save the files (e.g. './dossiers/')
-        """
-        try:
-            os.makedirs(local_folder, exist_ok=True)
-
-            response = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix=folder)
-            objects = response.get('Contents', [])
-
-            for obj in objects:
-                key = obj['Key']
-                
-                if key.endswith('//'): 
-                    continue
-
-                if key.endswith('/'):
-                    os.makedirs(local_folder + key, exist_ok=True)
-                    continue
-
-                filename = os.path.basename(key)
-                local_path = os.path.join(local_folder + key.replace(filename, ''), filename)
-                self.s3.download_file(self.bucket_name, key, local_path)
-                print(f"Downloaded: {key} → {local_path}")
-        
-        except ClientError as e:
-            print(f"AWS error: {e.response['Error']['Code']} — {e.response['Error']['Message']}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-
-    def upload_file(self, local_path: str, s3_key: str = None) -> str:
-        """Upload a single local file to S3
-        
-        Args:
-            local_path (str): Path to the local file to upload.
-            s3_key (str, optional): S3 key (path) for the uploaded file. If None, uses the local filename. Defaults to None.
         Returns:
-            str: S3 URL of the uploaded file.
+            bool: True if the folder was created (or recreated), False if the folder existed and was not recreated.
         """
-
-        if not os.path.isfile(local_path):
-            raise FileNotFoundError(f"File not found: {local_path}")
-
-        if s3_key is None:
-            s3_key = os.path.basename(local_path)
-
-        full_key = self.base_prefix + s3_key
+        # Build S3 path including the base prefix
+        path = self.base_prefix + folder.rstrip('/') + '/'
 
         try:
-            self.s3.upload_file(local_path, self.bucket_name, full_key)
-        except ClientError as e:
-            print(f"Error uploading file to S3: {e}")
-            raise e
+            # Check if there is at least one object with this prefix
+            resp = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix=path, MaxKeys=1)
+            exists = 'Contents' in resp and len(resp['Contents']) > 0
 
-    def upload_folder(self, folder_path: str) -> list:
-        """Upload an entire local folder (recursively) to S3
-        
+            if exists and not recreate:
+                # Folder exists and we don't want to recreate it
+                return True
+
+            if exists and recreate:
+                # Delete all objects under this prefix (paged)
+                paginator = self.s3.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=self.bucket_name, Prefix=path):
+                    objs = page.get('Contents', [])
+                    if not objs:
+                        continue
+                    delete_keys = [{'Key': o['Key']} for o in objs]
+                    # delete_objects accepts up to 1000 objects per call
+                    for i in range(0, len(delete_keys), 1000):
+                        chunk = delete_keys[i:i + 1000]
+                        self.s3.delete_objects(Bucket=self.bucket_name, Delete={'Objects': chunk})
+
+            # Create a "placeholder" object to represent the folder
+            self.s3.put_object(Bucket=self.bucket_name, Key=path)
+            self.base_prefix = self.base_prefix + (folder.rstrip('/') + '/' if folder else "")
+            return True
+
+        except ClientError as e:
+            logger.error(f"AWS error creating folder '{path}': {e.response.get('Error', {}).get('Message', str(e))}")
+            raise
+        except Exception as e:
+            logger.exception(f"Unexpected error creating folder '{path}': {e}")
+            raise
+
+    def upload_file_in_aws(self, key: str, 
+            content: list | str | bytes | dict | np.ndarray, 
+            type_file: "Literal['json','txt','csv','npy','pdf','png','jpg','jpeg','bin']") -> bool | str:
+        """
+        Uploads a file to S3 by first writing a temporary local file, then uploading that file.
+        The temporary file is removed only if the upload succeeds.
+
         Args:
-            folder_path (str): Path to the local folder to upload.
-        Returns:
-            list: List of S3 URLs of the uploaded files.
+        - key: full S3 path for the file relative to base_prefix (e.g. 'documents/report.txt' or '/documents/report.txt')
+        - content: file content as string, bytes, dict (for json) or numpy array (for .npy)
+        - type_file: optional single-type restriction as a string literal (e.g. "json", "txt", "npy").
+                     If provided it forces/validates the file type. If None, the type is inferred from the key extension.
         """
 
-        if not os.path.isdir(folder_path):
-            raise NotADirectoryError(f"Directory not found: {folder_path}")
+        _, ext = os.path.splitext(key)
+        ext = ext.lstrip(".").lower() if ext else None
 
-        uploaded_urls = []
+        supported = {"json", "txt", "csv", "npy", "pdf", "png", "jpg", "jpeg", "bin"}
 
-        for root, _, files in os.walk(folder_path):
-            for filename in files:
-                local_file_path = os.path.join(root, filename)
-                # Keep folder structure on S3
-                relative_path = os.path.relpath(local_file_path, folder_path)
-                s3_key = self.base_prefix + relative_path.replace("\\", "/")
+        detected_type = None
+        if type_file:
+            norm = type_file.strip().lstrip(".").lower()
+            if norm not in supported:
+                raise ValueError(f"type_file '{type_file}' not supported. Supported: {sorted(list(supported))}")
+            if ext and ext != norm:
+                raise ValueError(f"Provided type_file '{norm}' does not match file extension '{ext}'")
+            detected_type = norm
+        else:
+            detected_type = ext
 
+        # Build full_key (keep existing behavior but show debug)
+        full_key = ((self.base_prefix.rstrip("/") + "/" if key else "") or "") + key + f".{detected_type}"
+
+        content_type_map = {
+            "json": "application/json",
+            "txt": "text/plain; charset=utf-8",
+            "csv": "text/csv",
+            "npy": "application/octet-stream",
+            "pdf": "application/pdf",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "bin": "application/octet-stream",
+        }
+        content_type = content_type_map.get(detected_type, "application/octet-stream")
+
+        # Create temporary file with appropriate suffix
+        suffix = f".{detected_type}" if detected_type else ""
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+
+        try:
+            # Write content to temp file according to type
+            if detected_type == "json":
+                if isinstance(content, (dict, list)):
+                    with open(tmp_path, "w", encoding="utf-8") as f:
+                        json.dump(content, f, ensure_ascii=False)
+                elif isinstance(content, str):
+                    with open(tmp_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                elif isinstance(content, bytes):
+                    with open(tmp_path, "wb") as f:
+                        f.write(content)
+                else:
+                    raise TypeError("For json, content must be dict/list, str or bytes.")
+            elif detected_type in {"txt", "csv"}:
+                if isinstance(content, bytes):
+                    with open(tmp_path, "wb") as f:
+                        f.write(content)
+                else:
+                    with open(tmp_path, "w", encoding="utf-8") as f:
+                        f.write(str(content))
+            elif detected_type == "npy":
+                if isinstance(content, np.ndarray):
+                    # np.save accepts filename
+                    np.save(tmp_path, content, allow_pickle=False)
+                elif isinstance(content, bytes):
+                    with open(tmp_path, "wb") as f:
+                        f.write(content)
+                else:
+                    raise TypeError("For npy, content must be a numpy.ndarray or bytes.")
+            else:
+                # binary/image/pdf or generic
+                if isinstance(content, bytes):
+                    with open(tmp_path, "wb") as f:
+                        f.write(content)
+                else:
+                    with open(tmp_path, "w", encoding="utf-8") as f:
+                        f.write(str(content))
+
+            # Upload the temporary file to S3
+            try:
+                self.s3.upload_file(tmp_path, self.bucket_name, full_key, ExtraArgs={"ContentType": content_type})
+                logger.debug(f"[DEBUG] upload succeeded for s3://{self.bucket_name}/{full_key}")
+                # On success, remove the temporary file
                 try:
-                    self.s3.upload_file(local_file_path, self.bucket_name, s3_key)
-                    file_url = f"https://{self.bucket_name}.s3.amazonaws.com/{s3_key}"
-                    uploaded_urls.append(file_url)
-                except ClientError as e:
-                    print(f"Error uploading {filename}: {e}")
+                    os.remove(tmp_path)
+                except Exception:
+                    # If cleanup fails, don't fail the upload — just warn
+                    logger.warning(f"Warning: failed to remove temporary file {tmp_path}")
+                return True
+            except ClientError as e:
+                # Do not remove temp file; keep it for inspection
+                raise ValueError(f"AWS error uploading file '{full_key}': {e.response.get('Error', {}).get('Message', str(e))}")
+        finally:
+            # In case writing failed before upload, ensure temp file is removed
+            # Only remove if it still exists and upload wasn't attempted/succeeded.
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    raise ValueError(f"[DEBUG] final cleanup failed for {tmp_path}")
 
-        return uploaded_urls
-    
-
-    def load_json_documents_from_s3(self, key: str) -> list[Document]:
+    def download_file_from_aws(self, key: str,
+            type_file: "Literal['json','txt','csv','npy','pdf','png','jpg','jpeg','bin']") -> list | str | bytes | dict | np.ndarray:
         """
-        Load JSON data from an S3 bucket where each key is a URL and each value is the corresponding document text.
-
-        The function connects to AWS S3, downloads a JSON file, parses it, and converts each (URL, text)
-        pair into a LangChain Document object.
+        Downloads a file from S3 and loads its content into memory.
 
         Args:
-            bucket_name (str): The name of the S3 bucket.
-            key (str): The full path (key) to the JSON file in the bucket.
-            aws_access_key_id (str): AWS access key ID for authentication.
-            aws_secret_access_key (str): AWS secret access key for authentication.
+        - key: full S3 path for the file relative to base_prefix (e.g. 'documents/report.txt' or '/documents/report.txt')
+        - type_file: expected file type as a string literal (e.g. "json", "txt", "npy").
 
         Returns:
-            list[Document]: A list of LangChain Document objects, each representing a URL-text pair.
+        - content: file content as string, bytes, dict (for json) or numpy array (for .npy)
         """
-        
 
-        obj = self.s3.get_object(Bucket=self.bucket_name, Key=key)
-        file_content = obj["Body"].read().decode("utf-8")
+        _, ext = os.path.splitext(key)
+        ext = ext.lstrip(".").lower() if ext else None
 
-        data = json.loads(file_content)
+        supported = {"json", "txt", "csv", "npy", "pdf", "png", "jpg", "jpeg", "bin"}
 
-        documents = [
-            Document(page_content=text, metadata={"source": url})
-            for url, text in data.items()
-        ]
+        detected_type = None
+        if type_file:
+            norm = type_file.strip().lstrip(".").lower()
+            if norm not in supported:
+                raise ValueError(f"type_file '{type_file}' not supported. Supported: {sorted(list(supported))}")
+            if ext and ext != norm:
+                raise ValueError(f"Provided type_file '{norm}' does not match file extension '{ext}'")
+            detected_type = norm
+        else:
+            detected_type = ext
 
-        return documents
+        # Build full_key
+        full_key = ((self.base_prefix.rstrip("/") + "/" if key else "") or "") + key + f".{detected_type}"
+        logger.debug(f"[DEBUG] download_file_from_aws full_key: {full_key}")
+
+        try:
+            # Download the file to a temporary location
+            fd, tmp_path = tempfile.mkstemp()
+            os.close(fd)
+            self.s3.download_file(self.bucket_name, full_key, tmp_path)
+
+            # Load content based on type_file
+            if type_file == "json":
+                with open(tmp_path, 'r', encoding='utf-8') as f:
+                    content = json.load(f)
+            elif type_file in {"txt", "csv"}:
+                with open(tmp_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            elif type_file == "npy":
+                content = np.load(tmp_path)
+            else:
+                with open(tmp_path, 'rb') as f:
+                    content = f.read()
+
+            # Clean up temporary file
+            os.remove(tmp_path)
+            return content
+
+        except ClientError as e:
+            logger.error(f"AWS error downloading file '{full_key}': {e.response.get('Error', {}).get('Message', str(e))}")
+            raise
+        except Exception as e:
+            logger.exception(f"Unexpected error downloading file '{full_key}': {e}")
+            raise

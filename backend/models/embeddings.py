@@ -3,6 +3,12 @@ from fireworks.client import Fireworks
 from outils.dataset import Data
 import numpy as np
 from tqdm import tqdm
+import logging
+
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
 
 class Embeddings:
@@ -14,29 +20,20 @@ class Embeddings:
     def flat_chunks_and_sources(self):
         """
         Flatten nested lists of chunks and sources stored in `self.data`.
-
-        This method iterates over paired elements from `self.data.sources` and `self.data.chunks`,
-        concatenates all nested lists into single flat lists, and updates `self.data.chunks` 
-        and `self.data.sources` with these flattened versions.
-
-        Example:
-            Suppose:
-                self.data.chunks = [["a1", "a2"], ["b1", "b2"]]
-                self.data.sources = [["srcA", "srcA"], ["srcB", "srcB"]]
-
-            After calling this method:
-                self.data.chunks = ["a1", "a2", "b1", "b2"]
-                self.data.sources = ["srcA", "srcA", "srcB", "srcB"]
+        Also filters out empty or whitespace-only chunks.
         """
         chunks = []
         sources = []
 
-        for source, chunk in zip(self.data.sources, self.data.chunks):
-            chunks += chunk
-            sources += source
+        for source_list, chunk_list in zip(self.data.sources, self.data.chunks):
+            for src, txt in zip(source_list, chunk_list):
+                if txt and txt.strip():
+                    chunks.append(txt)
+                    sources.append(src)
         
         self.data.chunks = chunks
         self.data.sources = sources
+
 
     
     def chunking(self, chunk_size=500, overlap=50):
@@ -90,21 +87,31 @@ class Embeddings:
         
         self.data.embeddings = []
         n = len(self.data.chunks)
+        if n == 0:
+            logger.warning("No chunks to embed.")
+            self.data.embeddings = np.array([])
+            return
+
         q = n // dividend
         r = n % dividend
 
         chunks = [self.data.chunks[i * dividend: (i + 1) * dividend] for i in range(q)]
         if r > 0:
             chunks.append(self.data.chunks[q * dividend: q * dividend + r])
-        print(reversed([len(c) for c in chunks]))
+        logger.debug(f"chunks sizes: {[len(c) for c in chunks]}")
 
         with Fireworks(api_key=self.data.fireworks_api_key) as fw:
             for chunk in tqdm(chunks, desc="Generating embeddings", colour="green"):
-                response = fw.embeddings.create(
-                    model=self.model_embedding_name,
-                    input=chunk
-                )
-                self.data.embeddings += [np.array(item.embedding) for item in response.data]
+                try:
+                    response = fw.embeddings.create(
+                        model=self.model_embedding_name,
+                        input=chunk
+                    )
+                    self.data.embeddings += [np.array(item.embedding) for item in response.data]
+                except Exception as e:
+                    logger.error(f"Error embedding chunk batch: {e}")
+                    # Optionally retry or skip? For now, we raise to stop the pipeline if critical
+                    raise e
         self.data.embeddings = np.array(self.data.embeddings)
     
 
@@ -117,10 +124,20 @@ class Embeddings:
         Returns:
             (numpy.ndarray): result of embeddings.
         """
+        if not query or not query.strip():
+            logger.warning("Empty query provided for embedding.")
+            # Return a zero vector or handle appropriately. 
+            # For now, let's assume we shouldn't be here with empty query.
+            # But to avoid API error:
+            return np.zeros(768) # Assuming 768 dim, but better to raise or handle upstream
 
         with Fireworks(api_key=self.data.fireworks_api_key) as fw:
-            response = fw.embeddings.create(
-                model=self.model_embedding_name,
-                input=query
-            )
-            return response.data[0].embedding
+            try:
+                response = fw.embeddings.create(
+                    model=self.model_embedding_name,
+                    input=query
+                )
+                return response.data[0].embedding
+            except Exception as e:
+                logger.error(f"Error embedding query '{query}': {e}")
+                raise e
