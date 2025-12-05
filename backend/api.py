@@ -3,12 +3,11 @@ import sys
 import asyncio
 import subprocess
 import os
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 import tldextract
 import logging
-
 from config import *
 from outils.dataset import Data
 from outils.filesmanager import FileManager, AWSFileManager
@@ -18,8 +17,9 @@ from models.faissmanager import Faiss
 from models.LLM import Fireworks_LLM
 from models.RAG import LangChainRAGAgent
 from load_settings import settings
+import psutil
 
-# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+
 _uvicorn_logger = logging.getLogger("uvicorn.error")
 logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
@@ -90,6 +90,9 @@ def create_model(settings: Settings):
 async def lifespan(app: FastAPI):
     """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
 
+    logger.info("Starting up: Initializing default model...")
+    logger.info("Environment variables: " + str(settings))
+
     model = create_model(settings)
     model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
     model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
@@ -101,6 +104,7 @@ async def lifespan(app: FastAPI):
 
     app.state.model = model
     app.state.models = {}
+    logger.info("Default model initialized and ready.")
     
     yield
     
@@ -108,6 +112,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
 
 if settings.env.lower() == "env":
     from fastapi.middleware.cors import CORSMiddleware
@@ -119,6 +124,19 @@ if settings.env.lower() == "env":
         allow_headers=["*"],
     )
     logger.info("CORS middleware added for development environment.")
+elif settings.env.lower() == "gcloudprod":
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://mlops.kassatech.org",
+            "https://kassatech.org"
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logger.info("CORS middleware added for gcloudprod environment.")
 else:
     logger.info("Production environment detected; CORS middleware not added, it will be managed by nginx proxy.")
 
@@ -126,6 +144,37 @@ else:
 @app.get("/")
 def root():
     return {"message": "API is running. Visit /docs for API documentation."}
+
+
+@app.websocket("/ws/memory")
+async def memory_ws(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            process = psutil.Process()
+            mem_info = process.memory_info()
+            virtual_mem = psutil.virtual_memory()
+
+            data = {
+                "rss_GB": round(mem_info.rss / (1024 ** 3), 3),   # Physical memory of the process
+                "vms_GB": round(mem_info.vms / (1024 ** 3), 3),   # Virtual memory of the process
+                "cpu_percent": process.cpu_percent(interval=None), # CPU usage of the process (%)
+                "threads": process.num_threads(),                 # Number of threads
+                "total_RAM_GB": round(virtual_mem.total / (1024 ** 3), 2), # Total machine RAM
+                "used_RAM_GB": round(virtual_mem.used / (1024 ** 3), 2),   # Used machine RAM
+                "ram_percent": virtual_mem.percent                # Total RAM usage (%)
+            }
+
+            await websocket.send_json(data)
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        print("Client disconnected from memory monitor")
+    except Exception as e:
+        print(f"Error in memory monitor: {e}")
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
 
 
 @dataclass
