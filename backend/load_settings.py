@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 from config import Settings
 import logging
+from dotenv import load_dotenv
 
 
-# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
 _uvicorn_logger = logging.getLogger("uvicorn.error")
 logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ if env == "env":
     candidate = BASE_DIR / ".env"
 elif env == "prod":
     candidate = BASE_DIR / "prod.env"
+else:
+    load_dotenv()
 
 env_file_path = None
 if candidate and candidate.exists():

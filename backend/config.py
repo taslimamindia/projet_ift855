@@ -15,8 +15,6 @@ class Settings(BaseSettings):
     aws_region: str = Field(..., env="AWS_REGION")
     aws_s3_bucket_name_backend: str = Field(..., env="AWS_S3_BUCKET_NAME_BACKEND")
     base_prefix: str = Field("project_ift855/datasets/", env="BASE_PREFIX")
-    
-    # ClearML Configuration
     clearml_web_host: str = Field(None, env="CLEARML_WEB_HOST")
     clearml_api_host: str = Field(None, env="CLEARML_API_HOST")
     clearml_files_host: str = Field(None, env="CLEARML_FILES_HOST")
