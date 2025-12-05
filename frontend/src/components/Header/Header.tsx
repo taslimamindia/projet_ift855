@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import styles from './Header.module.scss';
 
 const GitHubIcon = () => (
@@ -46,7 +46,6 @@ const Header: React.FC = () => {
 
 const NavItems: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const location = useLocation();
   const navigate = useNavigate();
   const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
 
