@@ -4,6 +4,12 @@ from urllib.parse import urlparse, urljoin
 import tldextract
 import trafilatura
 from tqdm import tqdm
+import logging
+
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
 
 class Crawling:
@@ -145,11 +151,11 @@ class Crawling:
 
         urls_in_queue = set([url])
         can_stop = False
-        print(f"Starting crawl at: {url} up to {max_depth}")
+        logger.info(f"Starting crawl at: {url} up to {max_depth}")
         while len(urls_in_queue) and len(self.texts) <= max_depth:
             current_url = urls_in_queue.pop()
             if len(self.texts) % 50 == 0:
-                print(f"Current depth: {len(self.texts)}, URLs in queue: {len(urls_in_queue)}")
+                logger.info(f"Current depth: {len(self.texts)}, URLs in queue: {len(urls_in_queue)}")
             try:
                 self.texts[current_url] = extract_function(current_url, params)
                 self.visited.add(current_url)
@@ -162,7 +168,7 @@ class Crawling:
                     urls_in_queue.update([new_url for new_url in new_urls if new_url not in self.visited])
 
             except Exception:
-                print("Error crawling URL:", current_url)
+                logger.exception(f"Error crawling URL: {current_url}")
                 self.visited.add(current_url)
     
 

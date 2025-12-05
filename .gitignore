@@ -1,6 +1,9 @@
 .venv/
 
-# Ignorer les fichiers compilés Python
 __pycache__/
 *.py[cod]
 *$py.class
+
+*.old*
+ec2_manager/
+

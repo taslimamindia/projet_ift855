@@ -1,4 +1,10 @@
 from typing import List
+import logging
+
+
+# Prefer uvicorn's logger when running under uvicorn; fall back to module logger
+_uvicorn_logger = logging.getLogger("uvicorn.error")
+logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
 
 from langchain.llms.base import LLM
 from langchain.chains import RetrievalQA
@@ -100,7 +106,6 @@ class LangChainRAGAgent:
         llm = FireworksLangChain(fw_llm=self.fw_llm)
         retriever = FaissRetriever(faiss=self.faiss, data=self.data, k=k, fw_llm=self.fw_llm)
 
-        # Create a RetrievalQA chain; return source documents to expose provenance
         try:
             merged_query = f"{query}\n\nPrevious Answer: {self.last_answer}"
 
@@ -135,5 +140,5 @@ class LangChainRAGAgent:
 
         except Exception as e:
             # Fallback simple behaviour: use earlier simple RAG flow
-            print(f"LangChain RAG failed: {e}")
+            logger.exception(f"LangChain RAG failed: {e}")
             raise e
