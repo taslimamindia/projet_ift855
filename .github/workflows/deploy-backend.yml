@@ -15,6 +15,22 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      # Validate trigger conditions
+      - name: Validate trigger conditions
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.event.pull_request.merged }}" != "true" ]; then
+              echo "Error: PR was closed but not merged. Failing..."
+              exit 1
+            fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger detected."
+          else
+            echo "Error: Invalid trigger event: ${{ github.event_name }}"
+            exit 1
+          fi
+          echo "Trigger conditions satisfied."
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -35,7 +51,7 @@ jobs:
           source: ./backend
           project_id: project-ift855
           region: us-east1
-          flags: '--allow-unauthenticated --memory=2Gi'
+          flags: '--allow-unauthenticated --memory=2Gi --remove-secrets=ENV,FIREWORKS_API_KEY,MODEL_EMBEDDINGS_NAME,MODEL_LLM_NAME,DEPLOYMENT_TYPE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,AWS_S3_BUCKET_NAME_BACKEND,BASE_PREFIX,CLEARML_WEB_HOST,CLEARML_API_HOST,CLEARML_FILES_HOST,CLEARML_API_ACCESS_KEY,CLEARML_API_SECRET_KEY'
           env_vars: |
             ENV=${{ secrets.ENV }}
             FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }}
