@@ -45,7 +45,7 @@ const MemoryMonitor = () => {
         setStats(dataWithTime);
         setHistory(prev => {
           const newHistory = [...prev, dataWithTime];
-          return newHistory.slice(-100); // Keep last 100
+          return newHistory.slice(-300); // Keep last 300
         });
       } catch (error) {
         console.error('Error parsing websocket message:', error);
@@ -85,6 +85,12 @@ const MemoryMonitor = () => {
   const toggleConnection = () => {
     setShouldConnect(!shouldConnect);
   };
+
+  const maxMemory = history.length > 0 ? Math.max(...history.map(h => Math.max(h.rss_GB, h.vms_GB))) : 3;
+  const memoryTicks = [];
+  for (let i = 0; i <= maxMemory + 0.5; i += 0.25) {
+    memoryTicks.push(Number(i.toFixed(1)));
+  }
 
   return (
     <div className={styles.container}>
@@ -150,16 +156,16 @@ const MemoryMonitor = () => {
 
           <div className={styles.chartsGrid}>
             <div className={styles.chartCard}>
-              <h3>Utilisation CPU (%)</h3>
+              <h3>Processus en cours (Threads)</h3>
               <div className={styles.chartContainer}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={history}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="timestamp" tick={false} />
-                    <YAxis domain={[0, 100]} />
+                    <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Line type="monotone" dataKey="cpu_percent" stroke="#8884d8" dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="threads" stroke="#8884d8" dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -172,11 +178,11 @@ const MemoryMonitor = () => {
                   <LineChart data={history}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="timestamp" tick={false} />
-                    <YAxis />
+                    <YAxis ticks={memoryTicks} domain={[0, 'auto']} />
                     <Tooltip />
                     <Legend />
-                    <Line type="monotone" dataKey="rss_GB" name="RSS (Physique)" stroke="#82ca9d" dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="vms_GB" name="VMS (Virtuelle)" stroke="#ffc658" dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="rss_GB" name="RSS (Physique)" stroke="#2bea21ff" dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="vms_GB" name="VMS (Virtuelle)" stroke="#6958ffff" dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
