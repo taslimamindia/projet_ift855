@@ -9,18 +9,20 @@ const Login = () => {
 
   const from = location.state?.from?.pathname || '/admin/memory';
 
-  const handleSubmit = (e: React.FormEvent) => {
+const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
-    
-    if (adminPassword && password === adminPassword) {
-      localStorage.setItem('isAuthenticated', 'true');
-      navigate(from, { replace: true });
+    const adminPassword =
+        (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_ADMIN_PASSWORD) ||
+        (globalThis as any).process?.env?.REACT_APP_ADMIN_PASSWORD;
+
+    if (password === adminPassword) {
+        localStorage.setItem('isAuthenticated', 'true');
+        navigate(from, { replace: true });
     } else {
-      setError('Mot de passe incorrect');
+        setError('Mot de passe incorrect');
     }
-  };
+};
 
   return (
     <div className="container mt-5">
