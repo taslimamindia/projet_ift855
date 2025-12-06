@@ -51,9 +51,27 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      # Deploy to Cloud Run with environment variables
+      # Deploy to Cloud Run with Environment Variables
       - name: Deploy to Cloud Run
+        env:
+          ENV: ${{ secrets.ENV }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          MODEL_EMBEDDINGS_NAME: ${{ secrets.MODEL_EMBEDDINGS_NAME }}
+          MODEL_LLM_NAME: ${{ secrets.MODEL_LLM_NAME }}
+          DEPLOYMENT_TYPE: ${{ secrets.DEPLOYMENT_TYPE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_S3_BUCKET_NAME_BACKEND: ${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
+          BASE_PREFIX: ${{ secrets.BASE_PREFIX }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
         run: |
+          # On utilise maintenant les variables ($ENV, $FIREWORKS_API_KEY) définies ci-dessus.
+          # C'est beaucoup plus fiable pour le shell bash.
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --source ./backend \
             --region ${{ env.REGION }} \
@@ -61,18 +79,18 @@ jobs:
             --allow-unauthenticated \
             --memory=2Gi \
             --clear-secrets \
-            --set-env-vars "ENV=${{ secrets.ENV }},\
-              FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }},\
-              MODEL_EMBEDDINGS_NAME=${{ secrets.MODEL_EMBEDDINGS_NAME }},\
-              MODEL_LLM_NAME=${{ secrets.MODEL_LLM_NAME }},\
-              DEPLOYMENT_TYPE=${{ secrets.DEPLOYMENT_TYPE }},\
-              AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }},\
-              AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }},\
-              AWS_REGION=${{ secrets.AWS_REGION }},\
-              AWS_S3_BUCKET_NAME_BACKEND=${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }},\
-              BASE_PREFIX=${{ secrets.BASE_PREFIX }},\
-              CLEARML_WEB_HOST=${{ secrets.CLEARML_WEB_HOST }},\
-              CLEARML_API_HOST=${{ secrets.CLEARML_API_HOST }},\
-              CLEARML_FILES_HOST=${{ secrets.CLEARML_FILES_HOST }},\
-              CLEARML_API_ACCESS_KEY=${{ secrets.CLEARML_API_ACCESS_KEY }},\
-              CLEARML_API_SECRET_KEY=${{ secrets.CLEARML_API_SECRET_KEY }}"
+            --set-env-vars "ENV=$ENV,\
+          FIREWORKS_API_KEY=$FIREWORKS_API_KEY,\
+          MODEL_EMBEDDINGS_NAME=$MODEL_EMBEDDINGS_NAME,\
+          MODEL_LLM_NAME=$MODEL_LLM_NAME,\
+          DEPLOYMENT_TYPE=$DEPLOYMENT_TYPE,\
+          AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID,\
+          AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY,\
+          AWS_REGION=$AWS_REGION,\
+          AWS_S3_BUCKET_NAME_BACKEND=$AWS_S3_BUCKET_NAME_BACKEND,\
+          BASE_PREFIX=$BASE_PREFIX,\
+          CLEARML_WEB_HOST=$CLEARML_WEB_HOST,\
+          CLEARML_API_HOST=$CLEARML_API_HOST,\
+          CLEARML_FILES_HOST=$CLEARML_FILES_HOST,\
+          CLEARML_API_ACCESS_KEY=$CLEARML_API_ACCESS_KEY,\
+          CLEARML_API_SECRET_KEY=$CLEARML_API_SECRET_KEY"
