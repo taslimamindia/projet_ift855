@@ -55,11 +55,12 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --source . \
+            --source ./backend \
             --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }} \
             --allow-unauthenticated \
             --memory=2Gi \
+            --clear-secrets \
             --set-env-vars "ENV=${{ secrets.ENV }},\
               FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }},\
               MODEL_EMBEDDINGS_NAME=${{ secrets.MODEL_EMBEDDINGS_NAME }},\
