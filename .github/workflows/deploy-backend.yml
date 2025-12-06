@@ -9,6 +9,11 @@ on:
       - 'backend/**'
   workflow_dispatch:
 
+env:
+  PROJECT_ID: project-ift855
+  REGION: us-east1
+  SERVICE_NAME: project-ift855-backend 
+
 jobs:
   deploy:
     name: Deploy to Cloud Run
@@ -35,45 +40,38 @@ jobs:
         uses: actions/checkout@v4
 
       # Authenticate to Google Cloud
-      # Ensure you have added the GCP_CREDENTIALS secret to your GitHub repository
-      # This secret should contain the JSON key of your Service Account
       - name: Google Auth
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
 
-      # Transition secrets to env vars to avoid type conflict errors
-      - name: Transition secrets to env vars
-        continue-on-error: true
-        run: |
-          gcloud run services update project-ift855-backend --quiet \
-            --region us-east1 \
-            --remove-secrets=ENV,FIREWORKS_API_KEY,MODEL_EMBEDDINGS_NAME,MODEL_LLM_NAME,DEPLOYMENT_TYPE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,AWS_S3_BUCKET_NAME_BACKEND,BASE_PREFIX,CLEARML_WEB_HOST,CLEARML_API_HOST,CLEARML_FILES_HOST,CLEARML_API_ACCESS_KEY,CLEARML_API_SECRET_KEY \
-            --update-env-vars=ENV=transition,FIREWORKS_API_KEY=transition,MODEL_EMBEDDINGS_NAME=transition,MODEL_LLM_NAME=transition,DEPLOYMENT_TYPE=transition,AWS_ACCESS_KEY_ID=transition,AWS_SECRET_ACCESS_KEY=transition,AWS_REGION=transition,AWS_S3_BUCKET_NAME_BACKEND=transition,BASE_PREFIX=transition,CLEARML_WEB_HOST=transition,CLEARML_API_HOST=transition,CLEARML_FILES_HOST=transition,CLEARML_API_ACCESS_KEY=transition,CLEARML_API_SECRET_KEY=transition
-
-      # Deploy to Cloud Run
-      # This step builds the container from source and deploys it
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
+      # Installation of gcloud CLI
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
         with:
-          service: project-ift855-backend
-          source: ./backend
-          project_id: project-ift855
-          region: us-east1
-          flags: '--allow-unauthenticated --memory=2Gi --remove-secrets=ENV,FIREWORKS_API_KEY,MODEL_EMBEDDINGS_NAME,MODEL_LLM_NAME,DEPLOYMENT_TYPE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,AWS_S3_BUCKET_NAME_BACKEND,BASE_PREFIX,CLEARML_WEB_HOST,CLEARML_API_HOST,CLEARML_FILES_HOST,CLEARML_API_ACCESS_KEY,CLEARML_API_SECRET_KEY'
-          env_vars: |
-            ENV=${{ secrets.ENV }}
-            FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }}
-            MODEL_EMBEDDINGS_NAME=${{ secrets.MODEL_EMBEDDINGS_NAME }}
-            MODEL_LLM_NAME=${{ secrets.MODEL_LLM_NAME }}
-            DEPLOYMENT_TYPE=${{ secrets.DEPLOYMENT_TYPE }}
-            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            AWS_REGION=${{ secrets.AWS_REGION }}
-            AWS_S3_BUCKET_NAME_BACKEND=${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
-            BASE_PREFIX=${{ secrets.BASE_PREFIX }}
-            CLEARML_WEB_HOST=${{ secrets.CLEARML_WEB_HOST }}
-            CLEARML_API_HOST=${{ secrets.CLEARML_API_HOST }}
-            CLEARML_FILES_HOST=${{ secrets.CLEARML_FILES_HOST }}
-            CLEARML_API_ACCESS_KEY=${{ secrets.CLEARML_API_ACCESS_KEY }}
-            CLEARML_API_SECRET_KEY=${{ secrets.CLEARML_API_SECRET_KEY }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      # Deploy to Cloud Run with environment variables
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --source . \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --allow-unauthenticated \
+            --memory=2Gi \
+            --set-env-vars "ENV=${{ secrets.ENV }},\
+              FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }},\
+              MODEL_EMBEDDINGS_NAME=${{ secrets.MODEL_EMBEDDINGS_NAME }},\
+              MODEL_LLM_NAME=${{ secrets.MODEL_LLM_NAME }},\
+              DEPLOYMENT_TYPE=${{ secrets.DEPLOYMENT_TYPE }},\
+              AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }},\
+              AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }},\
+              AWS_REGION=${{ secrets.AWS_REGION }},\
+              AWS_S3_BUCKET_NAME_BACKEND=${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }},\
+              BASE_PREFIX=${{ secrets.BASE_PREFIX }},\
+              CLEARML_WEB_HOST=${{ secrets.CLEARML_WEB_HOST }},\
+              CLEARML_API_HOST=${{ secrets.CLEARML_API_HOST }},\
+              CLEARML_FILES_HOST=${{ secrets.CLEARML_FILES_HOST }},\
+              CLEARML_API_ACCESS_KEY=${{ secrets.CLEARML_API_ACCESS_KEY }},\
+              CLEARML_API_SECRET_KEY=${{ secrets.CLEARML_API_SECRET_KEY }}"
