@@ -190,7 +190,7 @@ jobs:
       #       --set-secrets="CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest" \
       #       --set-secrets="CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest" \
       #       --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
-        env:
-          SERVICE_NAME: project-ift855-backend
-          PROJECT_ID: ${{ env.PROJECT_ID }}
-          REGION: ${{ env.REGION }}
+        # env:
+        #   SERVICE_NAME: project-ift855-backend
+        #   PROJECT_ID: ${{ env.PROJECT_ID }}
+        #   REGION: ${{ env.REGION }}
