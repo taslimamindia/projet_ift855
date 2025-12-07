@@ -102,33 +102,39 @@ jobs:
       - name: Build and push Docker image
         run: |
           echo "La variable ${{ vars.ENV }} diallo"
-          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
-          docker build -t $IMAGE -f backend/Dockerfile backend
-          docker push $IMAGE
+          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:1588234b2381
+          # docker build -t $IMAGE -f backend/Dockerfile backend
+          # docker push $IMAGE
           echo "Image for deployment: $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       # Cloud Run deploy using GSM secrets
-      - name: Deploy to Cloud Run using Google Secret Manager secrets
+      - name: Deploy to Google Cloud Run with secrets from Google Secret Manager
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image ${{ env.IMAGE }} \
-            --region ${{ env.REGION }} \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
             --platform managed \
             --allow-unauthenticated \
-            --update-secrets \
-                ENV=ENV:latest,\
-                FIREWORKS_API_KEY=FIREWORKS_API_KEY:latest,\
-                MODEL_EMBEDDINGS_NAME=MODEL_EMBEDDINGS_NAME:latest,\
-                MODEL_LLM_NAME=MODEL_LLM_NAME:latest,\
-                DEPLOYMENT_TYPE=DEPLOYMENT_TYPE:latest,\
-                AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,\
-                AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,\
-                AWS_REGION=AWS_REGION:latest,\
-                AWS_S3_BUCKET_NAME_BACKEND=AWS_S3_BUCKET_NAME_BACKEND:latest,\
-                BASE_PREFIX=BASE_PREFIX:latest,\
-                CLEARML_WEB_HOST=CLEARML_WEB_HOST:latest,\
-                CLEARML_API_HOST=CLEARML_API_HOST:latest,\
-                CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest,\
-                CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest,\
-                CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest
+            --memory=2Gi \
+            --set-secrets="ENV=ENV:latest" \
+            --set-secrets="FIREWORKS_API_KEY=FIREWORKS_API_KEY:latest" \
+            --set-secrets="MODEL_EMBEDDINGS_NAME=MODEL_EMBEDDINGS_NAME:latest" \
+            --set-secrets="MODEL_LLM_NAME=MODEL_LLM_NAME:latest" \
+            --set-secrets="DEPLOYMENT_TYPE=DEPLOYMENT_TYPE:latest" \
+            --set-secrets="AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest" \
+            --set-secrets="AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest" \
+            --set-secrets="AWS_REGION=AWS_REGION:latest" \
+            --set-secrets="AWS_S3_BUCKET_NAME_BACKEND=AWS_S3_BUCKET_NAME_BACKEND:latest" \
+            --set-secrets="BASE_PREFIX=BASE_PREFIX:latest" \
+            --set-secrets="CLEARML_WEB_HOST=CLEARML_WEB_HOST:latest" \
+            --set-secrets="CLEARML_API_HOST=CLEARML_API_HOST:latest" \
+            --set-secrets="CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest" \
+            --set-secrets="CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest" \
+            --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
+        env:
+          SERVICE_NAME: project-ift855-backend
+          IMAGE: ${{ env.IMAGE }}
+          PROJECT_ID: ${{ env.PROJECT_ID }}
+          REGION: us-east1
