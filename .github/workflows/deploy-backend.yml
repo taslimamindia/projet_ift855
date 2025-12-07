@@ -66,19 +66,74 @@ jobs:
           echo "Image for deployment: $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
-      # Deploy to Cloud Run
-      - name: Deploy to Cloud Run
+      # ---------- Google Secret Manager section ----------
+      - name: Create or update secrets in Google Secret Manager
+        env:
+          ENV: ${{ secrets.ENV }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          MODEL_EMBEDDINGS_NAME: ${{ secrets.MODEL_EMBEDDINGS_NAME }}
+          MODEL_LLM_NAME: ${{ secrets.MODEL_LLM_NAME }}
+          DEPLOYMENT_TYPE: ${{ secrets.DEPLOYMENT_TYPE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_S3_BUCKET_NAME_BACKEND: ${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
+          BASE_PREFIX: ${{ secrets.BASE_PREFIX }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          PROJECT_ID: ${{ env.PROJECT_ID }}
         run: |
-          echo "Deploying image: ${{ env.IMAGE }}"
+          create_secret() {
+            local name=$1
+            local value=$2
+            if gcloud secrets describe "$name" --project ${PROJECT_ID} > /dev/null 2>&1; then
+              echo "$value" | gcloud secrets versions add "$name" --data-file=- --project ${PROJECT_ID}
+            else
+              gcloud secrets create "$name" --replication-policy="automatic" --project ${PROJECT_ID}
+              echo "$value" | gcloud secrets versions add "$name" --data-file=- --project ${PROJECT_ID}
+            fi
+          }
+
+          create_secret ENV             "$ENV"
+          create_secret FIREWORKS_API_KEY "$FIREWORKS_API_KEY"
+          create_secret MODEL_EMBEDDINGS_NAME "$MODEL_EMBEDDINGS_NAME"
+          create_secret MODEL_LLM_NAME "$MODEL_LLM_NAME"
+          create_secret DEPLOYMENT_TYPE "$DEPLOYMENT_TYPE"
+          create_secret AWS_ACCESS_KEY_ID "$AWS_ACCESS_KEY_ID"
+          create_secret AWS_SECRET_ACCESS_KEY "$AWS_SECRET_ACCESS_KEY"
+          create_secret AWS_REGION "$AWS_REGION"
+          create_secret AWS_S3_BUCKET_NAME_BACKEND "$AWS_S3_BUCKET_NAME_BACKEND"
+          create_secret BASE_PREFIX "$BASE_PREFIX"
+          create_secret CLEARML_WEB_HOST "$CLEARML_WEB_HOST"
+          create_secret CLEARML_API_HOST "$CLEARML_API_HOST"
+          create_secret CLEARML_FILES_HOST "$CLEARML_FILES_HOST"
+          create_secret CLEARML_API_ACCESS_KEY "$CLEARML_API_ACCESS_KEY"
+          create_secret CLEARML_API_SECRET_KEY "$CLEARML_API_SECRET_KEY"
+
+      # ---------- Cloud Run deploy using GSM secrets ----------
+      - name: Deploy to Cloud Run using Google Secret Manager secrets
+        run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image ${{ env.IMAGE }} \
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --memory=2Gi \
-            --clear-secrets \
-            --set-env-vars ENV=${{ secrets.ENV }},FIREWORKS_API_KEY=${{ secrets.FIREWORKS_API_KEY }},MODEL_EMBEDDINGS_NAME=${{ secrets.MODEL_EMBEDDINGS_NAME }},MODEL_LLM_NAME=${{ secrets.MODEL_LLM_NAME }},DEPLOYMENT_TYPE=${{ secrets.DEPLOYMENT_TYPE }},AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }},AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }},AWS_REGION=${{ secrets.AWS_REGION }},AWS_S3_BUCKET_NAME_BACKEND=${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }},BASE_PREFIX=${{ secrets.BASE_PREFIX }},CLEARML_WEB_HOST=${{ secrets.CLEARML_WEB_HOST }},CLEARML_API_HOST=${{ secrets.CLEARML_API_HOST }},CLEARML_FILES_HOST=${{ secrets.CLEARML_FILES_HOST }},CLEARML_API_ACCESS_KEY=${{ secrets.CLEARML_API_ACCESS_KEY }},CLEARML_API_SECRET_KEY=${{ secrets.CLEARML_API_SECRET_KEY }}
-        env:
-          PROJECT_ID: ${{ env.PROJECT_ID }}
-          SERVICE_NAME: ${{ env.SERVICE_NAME }}
-          REGION: ${{ env.REGION }}
+            --update-secrets \
+                ENV=ENV:latest,\
+                FIREWORKS_API_KEY=FIREWORKS_API_KEY:latest,\
+                MODEL_EMBEDDINGS_NAME=MODEL_EMBEDDINGS_NAME:latest,\
+                MODEL_LLM_NAME=MODEL_LLM_NAME:latest,\
+                DEPLOYMENT_TYPE=DEPLOYMENT_TYPE:latest,\
+                AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,\
+                AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,\
+                AWS_REGION=AWS_REGION:latest,\
+                AWS_S3_BUCKET_NAME_BACKEND=AWS_S3_BUCKET_NAME_BACKEND:latest,\
+                BASE_PREFIX=BASE_PREFIX:latest,\
+                CLEARML_WEB_HOST=CLEARML_WEB_HOST:latest,\
+                CLEARML_API_HOST=CLEARML_API_HOST:latest,\
+                CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest,\
+                CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest,\
+                CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest
