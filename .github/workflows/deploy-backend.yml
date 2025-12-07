@@ -50,9 +50,16 @@ jobs:
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet  
+
+      - name: Variables show
+        run: |
+          echo "La variable ${{ vars.ENV }} diallo"
+          echo "La variable ${{ secrets.ENV }} diallo"
+        
         
       - name: Build and push Docker image
         run: |
+          echo "La variable ${{ vars.ENV }} diallo"
           IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
           docker build -t $IMAGE -f backend/Dockerfile backend
           docker push $IMAGE
