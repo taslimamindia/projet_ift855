@@ -49,19 +49,22 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker us-east1-docker.pkg.dev      
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet  
         
       - name: Build and push Docker image
         run: |
           IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
           docker build -t $IMAGE -f backend/Dockerfile backend
           docker push $IMAGE
+          echo "Image for deployment: $IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       # Deploy to Cloud Run
       - name: Deploy to Cloud Run
         run: |
+          echo "Deploying image: ${{ env.IMAGE }}"
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image $IMAGE \
+            --image ${{ env.IMAGE }} \
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
