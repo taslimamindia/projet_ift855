@@ -101,12 +101,10 @@ jobs:
       # Build and push Docker image google artefact
       - name: Build and push Docker image
         run: |
-          echo "La variable ${{ vars.ENV }} diallo"
-          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:1588234b2381
-          # docker build -t $IMAGE -f backend/Dockerfile backend
-          # docker push $IMAGE
+          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
+          docker build -t $IMAGE -f backend/Dockerfile backend
+          docker push $IMAGE
           echo "Image for deployment: $IMAGE"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       # Cloud Run deploy using GSM secrets
       - name: Deploy to Google Cloud Run with secrets from Google Secret Manager
