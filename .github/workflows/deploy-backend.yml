@@ -106,13 +106,14 @@ jobs:
           # docker build -t $IMAGE -f backend/Dockerfile backend
           # docker push $IMAGE
           echo "Image for deployment: $IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       # Cloud Run deploy using GSM secrets
       - name: Deploy to Google Cloud Run with secrets from Google Secret Manager
         run: |
           echo "Image for deployment: $IMAGE"
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image ${{ env.IMAGE }} \
+            --image $IMAGE \
             --project "${{ env.PROJECT_ID }}" \
             --region "${{ env.REGION }}" \
             --platform managed \
@@ -135,6 +136,5 @@ jobs:
             --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
         env:
           SERVICE_NAME: project-ift855-backend
-          IMAGE: $IMAGE
           PROJECT_ID: ${{ env.PROJECT_ID }}
           REGION: ${{ env.REGION }}
