@@ -52,25 +52,61 @@ jobs:
         run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet  
 
       # Google Secret Manager section 
-      - name: Create or Update Secrets in GCP
-        uses: google-github-actions/create-secret-manager-secret@v2
-        with:
-          secrets: |
-            ENV:${{ secrets.ENV }}
-            FIREWORKS_API_KEY:${{ secrets.FIREWORKS_API_KEY }}
-            MODEL_EMBEDDINGS_NAME:${{ secrets.MODEL_EMBEDDINGS_NAME }}
-            MODEL_LLM_NAME:${{ secrets.MODEL_LLM_NAME }}
-            DEPLOYMENT_TYPE:${{ secrets.DEPLOYMENT_TYPE }}
-            AWS_ACCESS_KEY_ID:${{ secrets.AWS_ACCESS_KEY_ID }}
-            AWS_SECRET_ACCESS_KEY:${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            AWS_REGION:${{ secrets.AWS_REGION }}
-            AWS_S3_BUCKET_NAME_BACKEND:${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
-            BASE_PREFIX:${{ secrets.BASE_PREFIX }}
-            CLEARML_WEB_HOST:${{ secrets.CLEARML_WEB_HOST }}
-            CLEARML_API_HOST:${{ secrets.CLEARML_API_HOST }}
-            CLEARML_FILES_HOST:${{ secrets.CLEARML_FILES_HOST }}
-            CLEARML_API_ACCESS_KEY:${{ secrets.CLEARML_API_ACCESS_KEY }}
-            CLEARML_API_SECRET_KEY:${{ secrets.CLEARML_API_SECRET_KEY }}
+      - name: Push Secrets to Google Secret Manager
+        shell: bash
+        env:
+          # Map GitHub Secrets to env vars
+          ENV: ${{ secrets.ENV }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          MODEL_EMBEDDINGS_NAME: ${{ secrets.MODEL_EMBEDDINGS_NAME }}
+          MODEL_LLM_NAME: ${{ secrets.MODEL_LLM_NAME }}
+          DEPLOYMENT_TYPE: ${{ secrets.DEPLOYMENT_TYPE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_S3_BUCKET_NAME_BACKEND: ${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
+          BASE_PREFIX: ${{ secrets.BASE_PREFIX }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+        run: |
+          SECRET_NAMES=(
+            "ENV"
+            "FIREWORKS_API_KEY"
+            "MODEL_EMBEDDINGS_NAME"
+            "MODEL_LLM_NAME"
+            "DEPLOYMENT_TYPE"
+            "AWS_ACCESS_KEY_ID"
+            "AWS_SECRET_ACCESS_KEY"
+            "AWS_REGION"
+            "AWS_S3_BUCKET_NAME_BACKEND"
+            "BASE_PREFIX"
+            "CLEARML_WEB_HOST"
+            "CLEARML_API_HOST"
+            "CLEARML_FILES_HOST"
+            "CLEARML_API_ACCESS_KEY"
+            "CLEARML_API_SECRET_KEY"
+          )
+
+          for SECRET_NAME in "${SECRET_NAMES[@]}"; do
+            # Get value from env var using indirect reference
+            SECRET_VALUE="${!SECRET_NAME}"
+
+            if [ -z "$SECRET_VALUE" ]; then
+              echo "::warning::Skipping $SECRET_NAME (Value is empty)"
+              continue
+            fi
+
+            echo "Processing $SECRET_NAME..."
+
+            # Create secret if it does not exist
+            gcloud secrets create "$SECRET_NAME" --replication-policy="automatic" 2>/dev/null || true
+
+            # Add new version from stdin to avoid logging the value
+            printf "%s" "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file=-
+          done
       
       # - name: Create or update secrets in Google Secret Manager
       #   env:
