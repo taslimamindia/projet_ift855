@@ -51,22 +51,7 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet  
 
-      - name: Variables show
-        run: |
-          echo "La variable ${{ vars.ENV }} diallo"
-          echo "La variable ${{ secrets.ENV }} diallo"
-        
-        
-      - name: Build and push Docker image
-        run: |
-          echo "La variable ${{ vars.ENV }} diallo"
-          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
-          docker build -t $IMAGE -f backend/Dockerfile backend
-          docker push $IMAGE
-          echo "Image for deployment: $IMAGE"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-
-      # ---------- Google Secret Manager section ----------
+      # Google Secret Manager section 
       - name: Create or update secrets in Google Secret Manager
         env:
           ENV: ${{ secrets.ENV }}
@@ -113,7 +98,17 @@ jobs:
           create_secret CLEARML_API_ACCESS_KEY "$CLEARML_API_ACCESS_KEY"
           create_secret CLEARML_API_SECRET_KEY "$CLEARML_API_SECRET_KEY"
 
-      # ---------- Cloud Run deploy using GSM secrets ----------
+      # Build and push Docker image google artefact
+      - name: Build and push Docker image
+        run: |
+          echo "La variable ${{ vars.ENV }} diallo"
+          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
+          docker build -t $IMAGE -f backend/Dockerfile backend
+          docker push $IMAGE
+          echo "Image for deployment: $IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      # Cloud Run deploy using GSM secrets
       - name: Deploy to Cloud Run using Google Secret Manager secrets
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
