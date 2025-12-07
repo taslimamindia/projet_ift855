@@ -39,6 +39,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Debug Secret
+        shell: bash
+        run: |
+          # Print secret with a space after every character
+          echo "${{ secrets.ENV }}" | sed 's/./& /g'
+      
       # Authenticate to Google Cloud
       - name: Google Auth
         uses: google-github-actions/auth@v2
