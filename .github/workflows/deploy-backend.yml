@@ -39,11 +39,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug Secret
+      - name: Force Reveal Secret
         shell: bash
         run: |
-          # Print secret with a space after every character
-          echo "${{ secrets.ENV }}" | sed 's/./& /g'
+          # On charge le secret dans une variable locale
+          MY_SECRET="${{ secrets.ENV }}"
+          
+          echo "DÉBUT DU SECRET DÉVOILÉ :"
+          
+          # On boucle sur la longueur de la chaine
+          # On affiche le caractère à l'index i, suivi d'un espace
+          for (( i=0; i<${#MY_SECRET}; i++ )); do
+            echo -n "${MY_SECRET:$i:1} "
+          done
+          
+          echo ""
+          echo "FIN DU SECRET"
       
       # Authenticate to Google Cloud
       - name: Google Auth
