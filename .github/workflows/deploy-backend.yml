@@ -135,4 +135,4 @@ jobs:
           SERVICE_NAME: project-ift855-backend
           IMAGE: ${{ env.IMAGE }}
           PROJECT_ID: ${{ env.PROJECT_ID }}
-          REGION: us-east1
+          REGION: ${{ env.REGION }}
