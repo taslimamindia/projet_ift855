@@ -47,12 +47,29 @@ class Model:
     rag_langchain: LangChainRAGAgent = None
     aws_file: AWSFileManager = None
 
+@dataclass
+class DataRequest:
+    """Request payload for RAG/chat endpoints.
 
-def run_clearml_step(step: str, url: str, extra_args: list = None):
+    Attributes:
+        query (str): The user question or query text.
+        url (str): Optional URL used to select a domain-specific model.
+        mode (str): Optional mode flag.
+        k (int): Number of retrieved documents to use (default: 5).
+    """
+
+    query: str = None
+    url: str = None
+    mode: str = None
+    k: int = 5
+    max_depth: int = 200
+    data_folder: str = None
+
+def run_clearml_step(step: str, url: str, folder: str, extra_args: list = None):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     script_path = os.path.join(current_dir, "clearml_pipeline.py")
     
-    cmd_args = ["--step", step, "--url", url]
+    cmd_args = ["--step", step, "--url", url, "--folder", folder]
     if extra_args:
         cmd_args.extend(extra_args)
         
@@ -62,7 +79,6 @@ def run_clearml_step(step: str, url: str, extra_args: list = None):
         text=True,
         encoding='utf-8'
     )
-
 
 def create_model(settings: Settings):
     model = Model()
@@ -85,22 +101,22 @@ def create_model(settings: Settings):
 
     return model
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
 
-    logger.info("Starting up: Initializing default model...")
-    logger.info("Environment variables: " + str(settings))
-
     model = create_model(settings)
-    model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
-    model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
-    model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
-    model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
-    model.faiss.create_faiss_index()
-    model.data.documents_language = "french"
-    model.data.query_language = "french"
+    response = model.aws_file.create_folder_in_aws(settings.default_folder, recreate=False)
+    if response:
+        model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
+        model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
+        model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
+        model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
+        model.faiss.create_faiss_index()
+        model.data.documents_language = "french"
+        model.data.query_language = "french"
+    else:
+        raise ValueError("Could not initialize default model; check AWS S3 settings and default folder.")
 
     app.state.model = model
     app.state.models = {}
@@ -138,13 +154,48 @@ elif settings.env.lower() == "gcloudprod":
     )
     logger.info("CORS middleware added for gcloudprod environment.")
 else:
-    logger.info("Production environment detected; CORS middleware not added, it will be managed by nginx proxy.")
+    logger.info("Production environment detected; CORS middleware not added.")
 
+def extract_domain(url: str) -> str:
+    """Extract the domain from a given URL.
+
+    Args:
+        url (str): The input URL.
+
+    Returns:
+        str: The extracted domain.
+    """
+    ext = tldextract.extract(url)
+    return f"{ext.domain}_{ext.suffix}"
+
+def extract_aws_folder_path(url: str) -> str:
+    """Extract the AWS folder path from a given URL.
+
+    Args:
+        url (str): The input URL.
+
+    Returns:
+        str: The extracted AWS folder path.
+    """
+    
+    name = re.sub(r'[^A-Za-z0-9]+', '_', url)
+    name = name.replace("_", "")
+
+    if not name:
+        raise ValueError("Could not extract domain from URL.")
+    
+    return name.lower()
+
+def get_aws_folder_path(data: dict, url: str) -> str:
+    if data.get("data_folder", None) == settings.default_folder:
+        aws_folder_path = settings.default_folder
+    else:
+        aws_folder_path = extract_aws_folder_path(url)
+    return aws_folder_path
 
 @app.get("/")
 def root():
     return {"message": "API is running. Visit /docs for API documentation."}
-
 
 @app.websocket("/ws/memory")
 async def memory_ws(websocket: WebSocket):
@@ -177,73 +228,21 @@ async def memory_ws(websocket: WebSocket):
             pass
 
 
-@dataclass
-class DataRequest:
-    """Request payload for RAG/chat endpoints.
-
-    Attributes:
-        query (str): The user question or query text.
-        url (str): Optional URL used to select a domain-specific model.
-        mode (str): Optional mode flag.
-        k (int): Number of retrieved documents to use (default: 5).
-    """
-
-    query: str = None
-    url: str = None
-    mode: str = None
-    k: int = 5
-    max_depth: int = 200
-
-
-def extract_domain(url: str) -> str:
-    """Extract the domain from a given URL.
-
-    Args:
-        url (str): The input URL.
-
-    Returns:
-        str: The extracted domain.
-    """
-    ext = tldextract.extract(url)
-    return f"{ext.domain}_{ext.suffix}"
-
-
-def extract_aws_folder_path(url: str) -> str:
-    """Extract the AWS folder path from a given URL.
-
-    Args:
-        url (str): The input URL.
-
-    Returns:
-        str: The extracted AWS folder path.
-    """
-    
-    name = re.sub(r'[^A-Za-z0-9]+', '_', url)
-    name = name.replace("_", "")
-
-    if not name:
-        raise ValueError("Could not extract domain from URL.")
-    
-    return name.lower()
-
-
-@app.websocket("/api/pipeline/initializing")
-async def websocket_initialization(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
+async def websocket_initialization(ws: WebSocket, data: dict = None):
+    if data is None:
+        await ws.accept()
+        data = await ws.receive_json()
 
     url = data.get("url", None)
     if not url:
         await ws.send_json({"step": "initializing", "status": "failed", "error": "URL is required"})
         await ws.close()
         return
-
-    # Run ClearML task in subprocess using run_in_executor to avoid Windows loop issues
+    
+    aws_folder_path = get_aws_folder_path(data, url)
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "initializing", url, None)
-
+    result = await loop.run_in_executor(None, run_clearml_step, "initializing", url, aws_folder_path, None)
     if result.returncode == 0:
-        aws_folder_path = extract_aws_folder_path(url)
         model = create_model(settings)
         model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
         app.state.models[aws_folder_path] = model
@@ -253,11 +252,22 @@ async def websocket_initialization(ws: WebSocket):
         await ws.send_json({"step": "initializing", "status": "failed", "error": result.stderr})
     await ws.close()
 
-
-@app.websocket("/api/pipeline/crawling")
-async def websocket_crawling(ws: WebSocket):
+@app.websocket("/api/pipeline/initializing")
+async def guest_websocket_initialization(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_initialization(ws, data)
+
+@app.websocket("/admin/api/pipeline/initializing")
+async def admin_websocket_initialization(ws: WebSocket):
+    await websocket_initialization(ws)
+
+
+async def websocket_crawling(ws: WebSocket, data: dict = None):
+    if data is None:
+        await ws.accept()
+        data = await ws.receive_json()
     max_depth = int(data.get("max_depth", 250))
 
     url = data.get("url", None)
@@ -266,15 +276,14 @@ async def websocket_crawling(ws: WebSocket):
         await ws.close()
         return
     
-    # Run ClearML task in subprocess
+    aws_folder_path = get_aws_folder_path(data, url)
+    
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "crawling", url, ["--max_depth", str(max_depth)])
+    result = await loop.run_in_executor(None, run_clearml_step, "crawling", url, aws_folder_path, ["--max_depth", str(max_depth)])
 
     if result.returncode == 0:
-        aws_folder_path = extract_aws_folder_path(url)
         model = app.state.models.get(aws_folder_path, None)
         if model:
-            # Reload data from S3
             model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
         await ws.send_json({"step": "crawling", "status": "done"})
     else:
@@ -282,11 +291,22 @@ async def websocket_crawling(ws: WebSocket):
         await ws.send_json({"step": "crawling", "status": "failed", "error": result.stderr})
     await ws.close()
 
-
-@app.websocket("/api/pipeline/embedding")
-async def websocket_embedding(ws: WebSocket):
+@app.websocket("/api/pipeline/crawling")
+async def guest_websocket_crawling(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_crawling(ws, data)
+
+@app.websocket("/admin/api/pipeline/crawling")
+async def admin_websocket_crawling(ws: WebSocket):
+    await websocket_crawling(ws)
+
+
+async def websocket_embedding(ws: WebSocket, data: dict = None):
+    if data is None:
+        await ws.accept()
+        data = await ws.receive_json()
 
     url = data.get("url", None)
     if not url:
@@ -294,15 +314,14 @@ async def websocket_embedding(ws: WebSocket):
         await ws.close()
         return
 
-    # Run ClearML task in subprocess
+    aws_folder_path = get_aws_folder_path(data, url)
+    
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "embedding", url, None)
+    result = await loop.run_in_executor(None, run_clearml_step, "embedding", url, aws_folder_path, None)
 
     if result.returncode == 0:
-        aws_folder_path = extract_aws_folder_path(url)
         model = app.state.models.get(aws_folder_path, None)
         if model:
-            # Reload data from S3
             model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
             model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
             model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
@@ -312,11 +331,22 @@ async def websocket_embedding(ws: WebSocket):
         await ws.send_json({"step": "embedding", "status": "failed", "error": result.stderr})
     await ws.close()
 
-
-@app.websocket("/api/pipeline/indexing")
-async def websocket_indexing(ws: WebSocket):
+@app.websocket("/api/pipeline/embedding")
+async def guest_websocket_embedding(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_embedding(ws, data)
+
+@app.websocket("/admin/api/pipeline/embedding")
+async def admin_websocket_embedding(ws: WebSocket):
+    await websocket_embedding(ws)
+
+
+async def websocket_indexing(ws: WebSocket, data: dict = None):
+    if data is None:
+        await ws.accept()
+        data = await ws.receive_json()
 
     url = data.get("url", None)
     if not url:
@@ -324,21 +354,30 @@ async def websocket_indexing(ws: WebSocket):
         await ws.close()
         return
 
-    # Run ClearML task in subprocess
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "indexing", url, None)
-
-    if result.returncode == 0:
-        aws_folder_path = extract_aws_folder_path(url)
+    try:
+        aws_folder_path = get_aws_folder_path(data, url)
         model = app.state.models.get(aws_folder_path, None)
         if model:
-            # Recreate index locally
+            model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
+            model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
             model.faiss.create_faiss_index()
         await ws.send_json({"step": "indexing", "status": "done"})
-    else:
-        logger.error(f"Indexing failed: {result.stderr}")
-        await ws.send_json({"step": "indexing", "status": "failed", "error": result.stderr})
+    except Exception as e:
+        logger.error(f"Indexing failed: {str(e)}")
+        await ws.send_json({"step": "indexing", "status": "failed", "error": str(e)})
+
     await ws.close()
+
+@app.websocket("/api/pipeline/indexing")
+async def guest_websocket_indexing(ws: WebSocket):
+    await ws.accept()
+    data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_indexing(ws, data)
+
+@app.websocket("/admin/api/pipeline/indexing")
+async def admin_websocket_indexing(ws: WebSocket):
+    await websocket_indexing(ws)
 
 
 @app.post("/api/chat/rag")
@@ -361,10 +400,10 @@ async def chat_rag(datarequest: DataRequest):
         if not datarequest.url:
             model = app.state.model
         else:
-            aws_folder_path = extract_aws_folder_path(datarequest.url)
+            aws_folder_path = get_aws_folder_path(datarequest.data_folder, datarequest.url)
             model = app.state.models.get(aws_folder_path, None)
             if model is None:
-                raise ValueError(f"No model found for domain: {aws_folder_path}")
+                raise ValueError(f"No model found for domain extracted from URL: {datarequest.url}")
 
         if model is None or model.data is None:
             raise ValueError("No default model found or initialized.")
@@ -378,3 +417,4 @@ async def chat_rag(datarequest: DataRequest):
     
     except Exception as e:
         raise e
+

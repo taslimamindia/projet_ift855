@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     clearml_files_host: str = Field(None, env="CLEARML_FILES_HOST")
     clearml_api_access_key: str = Field(None, env="CLEARML_API_ACCESS_KEY")
     clearml_api_secret_key: str = Field(None, env="CLEARML_API_SECRET_KEY")
+    default_folder: str = Field("default_dataset", env="DEFAULT_FOLDER")
 
     model_config = {
         "protected_namespaces": ("settings_",)
