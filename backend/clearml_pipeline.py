@@ -2,13 +2,13 @@ import argparse
 import sys
 import os
 import logging
-
-# Add the current directory to sys.path to allow imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 from clearml import Task
 from load_settings import settings
 from api import create_model, extract_aws_folder_path, extract_domain
+
+
+# Add the current directory to sys.path to allow imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Configure ClearML environment if settings are present
 if settings.clearml_web_host:
@@ -22,22 +22,21 @@ if settings.clearml_api_access_key:
 if settings.clearml_api_secret_key:
     os.environ["CLEARML_API_SECRET_KEY"] = settings.clearml_api_secret_key
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def run_initializing(url):
+
+def run_initializing(url, folder):
     task = Task.init(project_name="RAG_Pipeline", task_name="initializing", reuse_last_task_id=False)
     task.connect({"url": url})
     
     try:
-        aws_folder_path = extract_aws_folder_path(url)
         domain = extract_domain(url)
-        
         model = create_model(settings)
-        
-        if model.aws_file.create_folder_in_aws(aws_folder_path, True):
-            meta_data = {"domain": domain, "url": url, "aws_folder_path": aws_folder_path}
+        if model.aws_file.create_folder_in_aws(folder, False):
+            meta_data = {"domain": domain, "url": url, "aws_folder_path": folder}
             model.aws_file.upload_file_in_aws("metadata", meta_data, type_file="json")
             logger.info("Initializing done")
         else:
@@ -49,18 +48,19 @@ def run_initializing(url):
     finally:
         task.close()
 
-def run_crawling(url, max_depth):
+def run_crawling(url, folder, max_depth):
     task = Task.init(project_name="RAG_Pipeline", task_name="crawling", reuse_last_task_id=False)
     task.connect({"url": url, "max_depth": max_depth})
     
     try:
-        aws_folder_path = extract_aws_folder_path(url)
         model = create_model(settings)
-        # Navigate to the folder
-        model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
-        
+        model.aws_file.create_folder_in_aws(folder, recreate=False)
         model.crawling.crawl(url, max_depth=max_depth)
         model.data.documents = model.crawling.texts
+        metadata = model.aws_file.download_file_from_aws("metadata", type_file="json")
+        if metadata:
+            metadata["max_depth"] = max_depth
+            model.aws_file.upload_file_in_aws("metadata", metadata, type_file="json")
         
         if model.aws_file.upload_file_in_aws("crawled_data", model.data.documents, type_file="json"):
             logger.info("Crawling done")
@@ -73,14 +73,13 @@ def run_crawling(url, max_depth):
     finally:
         task.close()
 
-def run_embedding(url):
+def run_embedding(url, folder):
     task = Task.init(project_name="RAG_Pipeline", task_name="embedding", reuse_last_task_id=False)
     task.connect({"url": url})
     
     try:
-        aws_folder_path = extract_aws_folder_path(url)
         model = create_model(settings)
-        model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
+        model.aws_file.create_folder_in_aws(folder, recreate=False)
         
         # Download crawled data
         logger.info("Downloading crawled data...")
@@ -105,14 +104,13 @@ def run_embedding(url):
     finally:
         task.close()
 
-def run_indexing(url):
+def run_indexing(url, folder):
     task = Task.init(project_name="RAG_Pipeline", task_name="indexing", reuse_last_task_id=False)
     task.connect({"url": url})
     
     try:
-        aws_folder_path = extract_aws_folder_path(url)
         model = create_model(settings)
-        model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
+        model.aws_file.create_folder_in_aws(folder, recreate=False)
         
         logger.info("Downloading embeddings and sources...")
         model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
@@ -128,19 +126,21 @@ def run_indexing(url):
     finally:
         task.close()
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--step", required=True, choices=["initializing", "crawling", "embedding", "indexing"])
     parser.add_argument("--url", required=True)
+    parser.add_argument("--folder", required=True)
     parser.add_argument("--max_depth", type=int, default=250)
     
     args = parser.parse_args()
     
     if args.step == "initializing":
-        run_initializing(args.url)
+        run_initializing(args.url, args.folder)
     elif args.step == "crawling":
-        run_crawling(args.url, args.max_depth)
+        run_crawling(args.url, args.folder, args.max_depth)
     elif args.step == "embedding":
-        run_embedding(args.url)
+        run_embedding(args.url, args.folder)
     elif args.step == "indexing":
-        run_indexing(args.url)
+        run_indexing(args.url, args.folder)
