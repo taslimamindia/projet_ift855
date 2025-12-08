@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - development
+    paths:
+      - 'backend/**'
   workflow_dispatch:
 
 jobs:
