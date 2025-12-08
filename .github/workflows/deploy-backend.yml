@@ -38,23 +38,6 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Force Reveal Secret
-        shell: bash
-        run: |
-          # On charge le secret dans une variable locale
-          MY_SECRET="${{ secrets.ENV }}"
-          
-          echo "DÉBUT DU SECRET DÉVOILÉ :"
-          
-          # On boucle sur la longueur de la chaine
-          # On affiche le caractère à l'index i, suivi d'un espace
-          for (( i=0; i<${#MY_SECRET}; i++ )); do
-            echo -n "${MY_SECRET:$i:1} "
-          done
-          
-          echo ""
-          echo "FIN DU SECRET"
       
       # Authenticate to Google Cloud
       - name: Google Auth
@@ -125,89 +108,44 @@ jobs:
             printf "%s" "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file=-
           done
       
-      # - name: Create or update secrets in Google Secret Manager
-      #   env:
-      #     ENV: ${{ secrets.ENV }}
-      #     FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
-      #     MODEL_EMBEDDINGS_NAME: ${{ secrets.MODEL_EMBEDDINGS_NAME }}
-      #     MODEL_LLM_NAME: ${{ secrets.MODEL_LLM_NAME }}
-      #     DEPLOYMENT_TYPE: ${{ secrets.DEPLOYMENT_TYPE }}
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     AWS_REGION: ${{ secrets.AWS_REGION }}
-      #     AWS_S3_BUCKET_NAME_BACKEND: ${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
-      #     BASE_PREFIX: ${{ secrets.BASE_PREFIX }}
-      #     CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
-      #     CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
-      #     CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
-      #     CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
-      #     CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
-      #     PROJECT_ID: ${{ env.PROJECT_ID }}
-      #   run: |
-      #     create_secret() {
-      #       local name=$1
-      #       local value=$2
-      #       if gcloud secrets describe "$name" --project ${PROJECT_ID} > /dev/null 2>&1; then
-      #         echo "$value" | gcloud secrets versions add "$name" --data-file=- --project ${PROJECT_ID}
-      #       else
-      #         gcloud secrets create "$name" --replication-policy="automatic" --project ${PROJECT_ID}
-      #         echo "$value" | gcloud secrets versions add "$name" --data-file=- --project ${PROJECT_ID}
-      #       fi
-      #     }
 
-      #     create_secret ENV             "$ENV"
-      #     create_secret FIREWORKS_API_KEY "$FIREWORKS_API_KEY"
-      #     create_secret MODEL_EMBEDDINGS_NAME "$MODEL_EMBEDDINGS_NAME"
-      #     create_secret MODEL_LLM_NAME "$MODEL_LLM_NAME"
-      #     create_secret DEPLOYMENT_TYPE "$DEPLOYMENT_TYPE"
-      #     create_secret AWS_ACCESS_KEY_ID "$AWS_ACCESS_KEY_ID"
-      #     create_secret AWS_SECRET_ACCESS_KEY "$AWS_SECRET_ACCESS_KEY"
-      #     create_secret AWS_REGION "$AWS_REGION"
-      #     create_secret AWS_S3_BUCKET_NAME_BACKEND "$AWS_S3_BUCKET_NAME_BACKEND"
-      #     create_secret BASE_PREFIX "$BASE_PREFIX"
-      #     create_secret CLEARML_WEB_HOST "$CLEARML_WEB_HOST"
-      #     create_secret CLEARML_API_HOST "$CLEARML_API_HOST"
-      #     create_secret CLEARML_FILES_HOST "$CLEARML_FILES_HOST"
-      #     create_secret CLEARML_API_ACCESS_KEY "$CLEARML_API_ACCESS_KEY"
-      #     create_secret CLEARML_API_SECRET_KEY "$CLEARML_API_SECRET_KEY"
+      # Build and push Docker image google artefact
+      - name: Build and push Docker image
+        run: |
+          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:0c8625b25ed8c6adc89fdff578dc4481d46a8186
+          # IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
+          # docker build -t $IMAGE -f backend/Dockerfile backend
+          # docker push $IMAGE
+          echo "Image for deployment: $IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
-      # # Build and push Docker image google artefact
-      # - name: Build and push Docker image
-      #   run: |
-      #     IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:0c8625b25ed8c6adc89fdff578dc4481d46a8186
-      #     # IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
-      #     # docker build -t $IMAGE -f backend/Dockerfile backend
-      #     # docker push $IMAGE
-      #     echo "Image for deployment: $IMAGE"
-      #     echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-
-      # # Cloud Run deploy using GSM secrets
-      # - name: Deploy to Google Cloud Run with secrets from Google Secret Manager
-      #   run: |
-      #     echo "Image for deployment: $IMAGE"
-      #     gcloud run deploy ${{ env.SERVICE_NAME }} \
-      #       --image $IMAGE \
-      #       --project "${{ env.PROJECT_ID }}" \
-      #       --region "${{ env.REGION }}" \
-      #       --platform managed \
-      #       --allow-unauthenticated \
-      #       --memory=2Gi \
-      #       --set-secrets="ENV=ENV:latest" \
-      #       --set-secrets="FIREWORKS_API_KEY=FIREWORKS_API_KEY:latest" \
-      #       --set-secrets="MODEL_EMBEDDINGS_NAME=MODEL_EMBEDDINGS_NAME:latest" \
-      #       --set-secrets="MODEL_LLM_NAME=MODEL_LLM_NAME:latest" \
-      #       --set-secrets="DEPLOYMENT_TYPE=DEPLOYMENT_TYPE:latest" \
-      #       --set-secrets="AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest" \
-      #       --set-secrets="AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest" \
-      #       --set-secrets="AWS_REGION=AWS_REGION:latest" \
-      #       --set-secrets="AWS_S3_BUCKET_NAME_BACKEND=AWS_S3_BUCKET_NAME_BACKEND:latest" \
-      #       --set-secrets="BASE_PREFIX=BASE_PREFIX:latest" \
-      #       --set-secrets="CLEARML_WEB_HOST=CLEARML_WEB_HOST:latest" \
-      #       --set-secrets="CLEARML_API_HOST=CLEARML_API_HOST:latest" \
-      #       --set-secrets="CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest" \
-      #       --set-secrets="CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest" \
-      #       --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
-        # env:
-        #   SERVICE_NAME: project-ift855-backend
-        #   PROJECT_ID: ${{ env.PROJECT_ID }}
-        #   REGION: ${{ env.REGION }}
+      # Cloud Run deploy using GSM secrets
+      - name: Deploy to Google Cloud Run with secrets from Google Secret Manager
+        run: |
+          echo "Image for deployment: $IMAGE"
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image $IMAGE \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory=2Gi \
+            --set-secrets="ENV=ENV:latest" \
+            --set-secrets="FIREWORKS_API_KEY=FIREWORKS_API_KEY:latest" \
+            --set-secrets="MODEL_EMBEDDINGS_NAME=MODEL_EMBEDDINGS_NAME:latest" \
+            --set-secrets="MODEL_LLM_NAME=MODEL_LLM_NAME:latest" \
+            --set-secrets="DEPLOYMENT_TYPE=DEPLOYMENT_TYPE:latest" \
+            --set-secrets="AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest" \
+            --set-secrets="AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest" \
+            --set-secrets="AWS_REGION=AWS_REGION:latest" \
+            --set-secrets="AWS_S3_BUCKET_NAME_BACKEND=AWS_S3_BUCKET_NAME_BACKEND:latest" \
+            --set-secrets="BASE_PREFIX=BASE_PREFIX:latest" \
+            --set-secrets="CLEARML_WEB_HOST=CLEARML_WEB_HOST:latest" \
+            --set-secrets="CLEARML_API_HOST=CLEARML_API_HOST:latest" \
+            --set-secrets="CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest" \
+            --set-secrets="CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest" \
+            --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
+        env:
+          SERVICE_NAME: project-ift855-backend
+          PROJECT_ID: ${{ env.PROJECT_ID }}
+          REGION: ${{ env.REGION }}
