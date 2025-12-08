@@ -6,6 +6,8 @@ on:
     types: [closed]
     branches:
       - main
+    paths:
+      - 'frontend/**'
       
   # Allow manual trigger
   workflow_dispatch:
