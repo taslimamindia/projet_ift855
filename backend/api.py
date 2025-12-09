@@ -106,7 +106,10 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
 
     model = create_model(settings)
+    logger.info("Creating default model and loading data from AWS S3 folder '{}'.".format(settings.default_folder))
+    logger.info("AWS S3 Base Prefix: {}".format(model.aws_file.base_prefix))
     response = model.aws_file.create_folder_in_aws(settings.default_folder, recreate=False)
+    logger.info("AWS S3 folder creation/check response: {}".format(model.aws_file.base_prefix))
     if response:
         model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
         model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
