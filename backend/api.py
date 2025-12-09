@@ -197,6 +197,19 @@ def get_aws_folder_path(data: dict, url: str) -> str:
 def root():
     return {"message": "API is running. Visit /docs for API documentation."}
 
+
+@app.get("/admin/api/config")
+def admin_get_config():
+    """Retrieve the current application configuration settings.
+
+    Returns:
+        dict: A dictionary containing key configuration parameters.
+    """
+    config = {
+        "default_folder": settings.default_folder,
+    }
+    return config
+
 @app.websocket("/ws/memory")
 async def memory_ws(websocket: WebSocket):
     await websocket.accept()
