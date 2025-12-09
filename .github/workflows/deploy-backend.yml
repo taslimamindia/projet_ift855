@@ -74,6 +74,7 @@ jobs:
           CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
           CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
           CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          DEFAULT_FOLDER: ${{ secrets.DEFAULT_FOLDER }}
         run: |
           SECRET_NAMES=(
             "ENV"
@@ -91,6 +92,7 @@ jobs:
             "CLEARML_FILES_HOST"
             "CLEARML_API_ACCESS_KEY"
             "CLEARML_API_SECRET_KEY"
+            "DEFAULT_FOLDER"
           )
 
           for SECRET_NAME in "${SECRET_NAMES[@]}"; do
@@ -115,10 +117,10 @@ jobs:
       # Build and push Docker image google artefact
       - name: Build and push Docker image
         run: |
-          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:0c8625b25ed8c6adc89fdff578dc4481d46a8186
-          # IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
-          # docker build -t $IMAGE -f backend/Dockerfile backend
-          # docker push $IMAGE
+          # IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:0c8625b25ed8c6adc89fdff578dc4481d46a8186
+          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
+          docker build -t $IMAGE -f backend/Dockerfile backend
+          docker push $IMAGE
           echo "Image for deployment: $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
@@ -147,7 +149,8 @@ jobs:
             --set-secrets="CLEARML_API_HOST=CLEARML_API_HOST:latest" \
             --set-secrets="CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest" \
             --set-secrets="CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest" \
-            --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
+            --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest" \
+            --set-secrets="DEFAULT_FOLDER=DEFAULT_FOLDER:latest"
         env:
           SERVICE_NAME: project-ift855-backend
           PROJECT_ID: ${{ env.PROJECT_ID }}
