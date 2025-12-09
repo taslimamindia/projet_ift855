@@ -117,10 +117,10 @@ jobs:
       # Build and push Docker image google artefact
       - name: Build and push Docker image
         run: |
-          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:0c8625b25ed8c6adc89fdff578dc4481d46a8186
-          # IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
-          # docker build -t $IMAGE -f backend/Dockerfile backend
-          # docker push $IMAGE
+          # IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:0c8625b25ed8c6adc89fdff578dc4481d46a8186
+          IMAGE=us-east1-docker.pkg.dev/project-ift855/cloud-run-source-deploy/project-ift855-backend:${{ github.sha }}
+          docker build -t $IMAGE -f backend/Dockerfile backend
+          docker push $IMAGE
           echo "Image for deployment: $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
