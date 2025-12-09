@@ -74,6 +74,7 @@ jobs:
           CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
           CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
           CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          DEFAULT_FOLDER: ${{ secrets.DEFAULT_FOLDER }}
         run: |
           SECRET_NAMES=(
             "ENV"
@@ -91,6 +92,7 @@ jobs:
             "CLEARML_FILES_HOST"
             "CLEARML_API_ACCESS_KEY"
             "CLEARML_API_SECRET_KEY"
+            "DEFAULT_FOLDER"
           )
 
           for SECRET_NAME in "${SECRET_NAMES[@]}"; do
@@ -148,6 +150,7 @@ jobs:
             --set-secrets="CLEARML_FILES_HOST=CLEARML_FILES_HOST:latest" \
             --set-secrets="CLEARML_API_ACCESS_KEY=CLEARML_API_ACCESS_KEY:latest" \
             --set-secrets="CLEARML_API_SECRET_KEY=CLEARML_API_SECRET_KEY:latest"
+            --set-secrets="DEFAULT_FOLDER=DEFAULT_FOLDER:latest"
         env:
           SERVICE_NAME: project-ift855-backend
           PROJECT_ID: ${{ env.PROJECT_ID }}
