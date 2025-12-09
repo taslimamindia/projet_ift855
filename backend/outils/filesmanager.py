@@ -107,7 +107,8 @@ class AWSFileManager(FileManager):
             exists = 'Contents' in resp and len(resp['Contents']) > 0
 
             if exists and not recreate:
-                # Folder exists and we don't want to recreate it
+                if folder not in self.base_prefix:
+                    self.base_prefix = self.base_prefix + (folder.rstrip('/') + '/' if folder else "")
                 return True
 
             if exists and recreate:
@@ -228,13 +229,11 @@ class AWSFileManager(FileManager):
             # Upload the temporary file to S3
             try:
                 self.s3.upload_file(tmp_path, self.bucket_name, full_key, ExtraArgs={"ContentType": content_type})
-                logger.debug(f"[DEBUG] upload succeeded for s3://{self.bucket_name}/{full_key}")
                 # On success, remove the temporary file
                 try:
                     os.remove(tmp_path)
                 except Exception:
-                    # If cleanup fails, don't fail the upload — just warn
-                    logger.warning(f"Warning: failed to remove temporary file {tmp_path}")
+                    logger.warning(f"Warning: failed to remove temporary file")
                 return True
             except ClientError as e:
                 # Do not remove temp file; keep it for inspection
@@ -279,7 +278,6 @@ class AWSFileManager(FileManager):
 
         # Build full_key
         full_key = ((self.base_prefix.rstrip("/") + "/" if key else "") or "") + key + f".{detected_type}"
-        logger.debug(f"[DEBUG] download_file_from_aws full_key: {full_key}")
 
         try:
             # Download the file to a temporary location
@@ -305,8 +303,8 @@ class AWSFileManager(FileManager):
             return content
 
         except ClientError as e:
-            logger.error(f"AWS error downloading file '{full_key}': {e.response.get('Error', {}).get('Message', str(e))}")
+            logger.error(f"AWS error downloading file: {e.response.get('Error', {}).get('Message', str(e))}")
             raise
         except Exception as e:
-            logger.exception(f"Unexpected error downloading file '{full_key}': {e}")
+            logger.exception(f"Unexpected error downloading file: {e}")
             raise

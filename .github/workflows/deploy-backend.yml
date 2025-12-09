@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: project-ift855
-  REGION: us-east1
-  SERVICE_NAME: project-ift855-backend 
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+  SERVICE_NAME: ${{ secrets.GCP_SERVICE_NAME }}
 
 jobs:
   deploy:
@@ -36,6 +36,7 @@ jobs:
           fi
           echo "Trigger conditions satisfied."
 
+      # Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
       
@@ -45,9 +46,11 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
       
+      # Set up Google Cloud SDK
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      # Configure Docker for Google Artifact Registry
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet  
 

@@ -75,15 +75,6 @@
   margin-left: 0.75rem;
 }
 
-/* make sure the github link and its icon align with the other icons */
-.githubLink {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
 /* slightly larger, subtler scale for the main logo */
 .logo:hover,
 .logo:focus,
@@ -159,9 +150,13 @@
 }
 
 /* Duplicate of Home.module.scss GitHub link styles so header can reuse the same visual */
+
 .githubLink {
   display: inline-flex;
   align-items: center;
+  vertical-align: middle;
+  margin-top: 0;
+  margin-bottom: 0;
   gap: 8px;
   padding: 8px 10px;
   color: #0d6efd; /* bootstrap primary */
@@ -174,9 +169,10 @@
   line-height: 1;
 }
 
-.githubLink:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+
+.githubLink:hover .githubIcon,
+.githubLink:focus .githubIcon {
+  transform: scale(1.08);
 }
 
 .githubIcon {
@@ -189,10 +185,6 @@
   transition: transform 160ms cubic-bezier(.2,.8,.2,1);
 }
 
-.githubLink:hover .githubIcon,
-.githubLink:focus .githubIcon {
-  transform: scale(1.08);
-}
 
 .githubLabel {
   display: inline-block;
