@@ -12,13 +12,11 @@ import 'katex/dist/katex.min.css';
 type ChatInterfaceProps = {
   url: string;
   suggestions: string[];
-  maxDepth?: number;
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   url,
   suggestions,
-  maxDepth,
 }) => {
   const [query, setQuery] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -35,12 +33,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setLoading(true);
     setShowSuggestions(false);
 
-      try {
+    try {
       const data = await sendQueryToBackend({
         query: finalQuery,
         url: url,
         mode: 'default',
-        max_depth: maxDepth,
       });
 
       const aiMessage: Message = {
@@ -50,7 +47,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setMessages(prev => [...prev, aiMessage]);
 
     } catch (error) {
-      console.error('Erreur lors de la requête:', error);
       setMessages(prev => [
         ...prev,
         { sender: 'ai', text: 'Erreur de communication avec le serveur.' }
