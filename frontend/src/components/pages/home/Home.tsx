@@ -23,8 +23,9 @@ const Home: React.FC = () => {
   
   return (
     <div className={`container ${styles.homeContainer}`}>
-      <h1 className="text-center mt-5">Bienvenue sur le Chat Data Explorer</h1>
-      <p className={`lead text-center mb-5 ${styles.paragraph}`}>
+      <h1 className='text-center'>RAG</h1>
+      <h2 className="text-center">Explorez les données du web ou internes à votre organisation grâce à l’IA</h2>
+      <p className={`lead text-center mb-4 ${styles.paragraph}`}>
         Choisissez une source de données pour démarrer votre session de chat.
       </p>
 
@@ -56,28 +57,33 @@ const Home: React.FC = () => {
           <form className='h-100' onSubmit={handleSubmit}>
             <div className={`card shadow-sm h-100 ${styles.card}`}>
               <div className="card-body text-center">
-                <h5 className={styles.cardTitle}>🌐 Fournir une URL</h5>
-                <p className={`${styles.cardText} ${styles.paragraph}`}>
-                  Entrez l’adresse d’un site web pour crawler ses données et discuter avec l'AI.
-                </p>
+                <h5 className={`mb-2 ${styles.cardTitle}`}>🌐 Fournir un site web</h5>
+                <div className="mb-3 text-start"> 
+                  <label htmlFor="url" className={`form-label ${styles.paragraph}`}>
+                    Entrez l’adresse d’un site web pour crawler ses données et discuter avec l'AI.
+                  </label>
+                  
+                  <input
+                    id="url"
+                    type="url"
+                    placeholder="https://"
+                    className="form-control mb-3"
+                    value={url}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      if (!value.startsWith("https://")) {
+                        value = "https://";
+                      }
+                      setUrl(value);
+                    }}
+                    required
+                  />  
+                </div>
                 
-                <input
-                  id="url"
-                  type="url"
-                  placeholder="https://"
-                  className="form-control mb-3"
-                  value={url}
-                  onChange={(e) => {
-                    let value = e.target.value;
-                    if (!value.startsWith("https://")) {
-                      value = "https://";
-                    }
-                    setUrl(value);
-                  }}
-                  required
-                />  
                 <div className="mb-3 text-start">
-                  <label htmlFor="maxDepth" className={`form-label ${styles.paragraph}`}>Nombre maximal de pages à crawler</label>
+                  <label htmlFor="maxDepth" className={`form-label ${styles.paragraph}`}>
+                    Nombre maximal de pages à crawler
+                  </label>
                   <input
                     id="maxDepth"
                     type="number"
@@ -88,7 +94,6 @@ const Home: React.FC = () => {
                     onChange={(e) => {
                       let v = Number(e.target.value);
                       if (Number.isNaN(v)) v = 250;
-                      v = Math.max(50, Math.min(1000, Math.trunc(v)));
                       setMaxDepth(v);
                     }}
                     aria-describedby="maxDepthHelp"

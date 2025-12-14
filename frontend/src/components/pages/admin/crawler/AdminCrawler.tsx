@@ -14,6 +14,7 @@ const AdminCrawler: React.FC = () => {
     const [currentStep, setCurrentStep] = useState<string>('initializing');
     const [status, setStatus] = useState<string>('start');
     const [error, setError] = useState<string | null>(null);
+    const [value, setValue] = useState<number | undefined>(0);
 
     useEffect(() => {
         const fetchConfig = async () => {
@@ -36,8 +37,21 @@ const AdminCrawler: React.FC = () => {
     const handleStep = useCallback((_stepLabel: string, update: PipelineProgressEvent) => {
         if (update.status === 'start') {
             setCurrentStep(update.step);
-            setStatus(update.status);
         }
+
+        if (update.status === 'in_progress' && typeof update.value === 'number') {
+            setValue(update.value);
+        }
+
+        if (update.status === 'done') {
+            setValue(0);
+        }
+    
+        if (update.status === 'failed') {
+            setValue(undefined);
+        }
+
+        setStatus(update.status);
 
         if (update.step === 'pipeline' && update.status === 'done') {
             setPipelineDone(true);
@@ -61,7 +75,7 @@ const AdminCrawler: React.FC = () => {
         setCurrentStep('initializing');
 
         const svc = new PipelineService();
-        const clampedDepth = Math.max(50, Math.min(1000, Number(maxDepth) || 250));
+        const max_depth = Math.max(50, Math.min(1000, Number(maxDepth) || 250));
 
         try {
             await svc.runAdminPipeline(
@@ -71,9 +85,7 @@ const AdminCrawler: React.FC = () => {
                     handleStep(stepLabel, data);
                 },
                 undefined,
-                setCurrentStep,
-                setPipelineDone,
-                clampedDepth
+                max_depth
             );
         } catch (err: any) {
             console.error('Pipeline failed:', err);
@@ -134,11 +146,10 @@ const AdminCrawler: React.FC = () => {
                                 className={styles.input}
                                 value={maxDepth}
                                 min={50}
-                                max={1000}
+                                max={2000}
                                 onChange={(e) => {
                                     let v = Number(e.target.value);
                                     if (Number.isNaN(v)) v = 250;
-                                    v = Math.max(50, Math.min(1000, Math.trunc(v)));
                                     setMaxDepth(v);
                                 }}
                             />
@@ -153,7 +164,7 @@ const AdminCrawler: React.FC = () => {
 
                 {(isProcessing || pipelineDone || pipelineFailed) && (
                     <div className="mt-4">
-                        <PipelineProgess currentStep={currentStep} status={status} />
+                        <PipelineProgess currentStep={currentStep} status={status} value={value} />
                         
                         {pipelineDone && (
                             <div className={`${styles.status} ${styles.success}`}>

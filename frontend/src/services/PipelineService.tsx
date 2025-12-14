@@ -1,6 +1,8 @@
 export interface PipelineProgressEvent {
   step: "initializing" | "crawling" | "embedding" | "indexing" | "pipeline";
   status: "start" | "done" | "failed" | "in_progress";
+  value?: number;
+  message?: string;
   error?: string;
 }
 
@@ -43,17 +45,16 @@ export class PipelineService {
     payload: any,
     onProgress?: ProgressCallback,
     timeoutMs = DEFAULT_TIMEOUT,
-    setCurrentStep?: (step: PipelineProgressEvent['step']) => void,
   ): Promise<PipelineProgressEvent> {
-  // create a stable key for this step + payload to dedupe identical concurrent calls
+    // create a stable key for this step + payload to dedupe identical concurrent calls
     const key = `${path}::${JSON.stringify(payload)}`;
-  // if there is already a pending promise for this exact step+payload, return it
+    
+    // if there is already a pending promise for this exact step+payload, return it
     const existing = this.pendingStepPromises[key];
     if (existing) return existing;
 
     const promise = new Promise<PipelineProgressEvent>((resolve, reject) => {
       const url = wsUrlFor(path);
-      console.log('Connecting to WebSocket:', url, 'with payload:', payload);
       let settled = false;
       let timer: number | undefined;
 
@@ -82,17 +83,10 @@ export class PipelineService {
 
         ws.onopen = () => {
           try {
-            if (setCurrentStep) setCurrentStep(expectedStep);
-          } catch (e) {
-          }
-
-          try {
             // Inform caller immediately that this step has started (backend accepted connection)
             // Only emit the onopen 'start' event if caller did not already emit it.
-            console.log('WebSocket opened for step:', expectedStep);
             if (onProgress) {
               onProgress({ step: expectedStep, status: 'start' });
-              console.log('Emitted onProgress start for step:', expectedStep);
             }
             ws.send(JSON.stringify(payload));
           } catch (err) {
@@ -107,20 +101,13 @@ export class PipelineService {
         ws.onmessage = (ev) => {
           try {
             const data: PipelineProgressEvent = JSON.parse(ev.data);
+            
             if (onProgress) onProgress(data);
 
             // Accept either the expected step completion OR a global pipeline completion
             const isExpected = data.step === expectedStep;
-            const isPipelineDone = data.step === 'pipeline' && data.status === 'done';
 
             if (isExpected && data.status === 'done') {
-              settled = true;
-              cleanup();
-              resolve(data);
-              return;
-            }
-
-            if (isPipelineDone) {
               settled = true;
               cleanup();
               resolve(data);
@@ -133,7 +120,6 @@ export class PipelineService {
               reject(new Error(data.error || `Step ${expectedStep} failed`));
               return;
             }
-            // otherwise continue listening (in_progress, other steps, etc.)
           } catch (err) {
             if (!settled) {
               settled = true;
@@ -178,36 +164,38 @@ export class PipelineService {
 
   // Each step uses its own endpoint path and sends the same payload { url, max_depth }
   // We add an optional maxDepth parameter so the backend receives it together with the url.
-  initialize(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/api/pipeline/initializing', 'initializing', { url, max_depth: maxDepth }, onProgress, timeoutMs, setCurrentStep);
+  initialize(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/api/pipeline/initializing', 'initializing', { url, max_depth: maxDepth }, onProgress, timeoutMs);
   }
 
-  adminInitialize(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/admin/api/pipeline/initializing', 'initializing', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs, setCurrentStep);
+  crawling(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/api/pipeline/crawling', 'crawling', { url, max_depth: maxDepth }, onProgress, timeoutMs);
   }
 
-  adminCrawling(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/admin/api/pipeline/crawling', 'crawling', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs, setCurrentStep);
+  embedding(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/api/pipeline/embedding', 'embedding', { url, max_depth: maxDepth }, onProgress, timeoutMs);
   }
 
-  adminEmbedding(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/admin/api/pipeline/embedding', 'embedding', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs, setCurrentStep);
+  indexing(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/api/pipeline/indexing', 'indexing', { url, max_depth: maxDepth }, onProgress, timeoutMs);
   }
 
-  adminIndexing(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/admin/api/pipeline/indexing', 'indexing', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs, setCurrentStep);
+  // Admin versions of each step that also take a dataFolder parameter
+
+  adminInitialize(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/admin/api/pipeline/initializing', 'initializing', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs);
   }
 
-  crawling(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/api/pipeline/crawling', 'crawling', { url, max_depth: maxDepth }, onProgress, timeoutMs, setCurrentStep);
+  adminCrawling(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/admin/api/pipeline/crawling', 'crawling', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs);
   }
 
-  embedding(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/api/pipeline/embedding', 'embedding', { url, max_depth: maxDepth }, onProgress, timeoutMs, setCurrentStep);
+  adminEmbedding(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/admin/api/pipeline/embedding', 'embedding', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs);
   }
 
-  indexing(url: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number, setCurrentStep?: (step: PipelineProgressEvent['step']) => void) {
-    return this.openStepSocket('/api/pipeline/indexing', 'indexing', { url, max_depth: maxDepth }, onProgress, timeoutMs, setCurrentStep);
+  adminIndexing(url: string, dataFolder: string, maxDepth?: number, onProgress?: ProgressCallback, timeoutMs?: number) {
+    return this.openStepSocket('/admin/api/pipeline/indexing', 'indexing', { url, max_depth: maxDepth, data_folder: dataFolder }, onProgress, timeoutMs);
   }
 
   // run all steps sequentially; each step waits for the other's done status
@@ -215,8 +203,6 @@ export class PipelineService {
     url: string,
     perStepProgress?: (step: string, data: PipelineProgressEvent) => void,
     timeoutMs?: number,
-    setCurrentStep?: (step: PipelineProgressEvent['step']) => void,
-    setIsPipelineDone?: (done: boolean) => void,
     maxDepth?: number,
   ) {
   // If a full run is already in-flight for this URL, return the existing promise
@@ -231,23 +217,26 @@ export class PipelineService {
       };
 
       try {
-  if (perStepProgress) perStepProgress('initializing', { step: 'initializing', status: 'start' });
-  if (setCurrentStep) setCurrentStep('initializing');
-  results.initialize = await this.initialize(url, maxDepth, handle('initializing'), timeoutMs, setCurrentStep);
-    if (perStepProgress) perStepProgress('crawling', { step: 'crawling', status: 'start' });
-  if (setCurrentStep) setCurrentStep('crawling');
-  results.crawling = await this.crawling(url, maxDepth, handle('crawling'), timeoutMs, setCurrentStep);
-    if (perStepProgress) perStepProgress('embedding', { step: 'embedding', status: 'start' });
-  if (setCurrentStep) setCurrentStep('embedding');
-  results.embedding = await this.embedding(url, maxDepth, handle('embedding'), timeoutMs, setCurrentStep);
-    if (perStepProgress) perStepProgress('indexing', { step: 'indexing', status: 'start' });
-  if (setCurrentStep) setCurrentStep('indexing');
-  results.indexing = await this.indexing(url, maxDepth, handle('indexing'), timeoutMs, setCurrentStep);
+        if (perStepProgress) {
+          perStepProgress('initializing', { step: 'initializing', status: 'start' });
+          // if (setCurrentStep) setCurrentStep('initializing');
+          results.initialize = await this.initialize(url, maxDepth, handle('initializing'), timeoutMs);
+          perStepProgress('crawling', { step: 'crawling', status: 'start' });
+          // if (setCurrentStep) setCurrentStep('crawling');
+          results.crawling = await this.crawling(url, maxDepth, handle('crawling'), timeoutMs);
+          perStepProgress('embedding', { step: 'embedding', status: 'start' });
+          // if (setCurrentStep) setCurrentStep('embedding');
+          results.embedding = await this.embedding(url, maxDepth, handle('embedding'), timeoutMs);
+          perStepProgress('indexing', { step: 'indexing', status: 'start' });
+          // if (setCurrentStep) setCurrentStep('indexing');
+          results.indexing = await this.indexing(url, maxDepth, handle('indexing'), timeoutMs);
 
-  // After all steps completed successfully, emit a final pipeline done event
-  if (perStepProgress) perStepProgress('pipeline', { step: 'pipeline', status: 'done' });
-  if (setCurrentStep) setCurrentStep('pipeline');
-  if (setIsPipelineDone) setIsPipelineDone(true);
+          // After all steps completed successfully, emit a final pipeline done event
+          perStepProgress('pipeline', { step: 'pipeline', status: 'done' });
+          // if (setCurrentStep) setCurrentStep('pipeline');
+          // if (setIsPipelineDone) setIsPipelineDone(true);
+        }
+
         return results;
       } catch (err: any) {
         // In case any step failed, emit a pipeline failed event for consumers
@@ -268,13 +257,12 @@ export class PipelineService {
     return resultsPromise;
   }
 
+  // run all admin steps sequentially; each step waits for the other's done status
   async runAdminPipeline(
     url: string,
     dataFolder: string,
     perStepProgress?: (step: string, data: PipelineProgressEvent) => void,
     timeoutMs?: number,
-    setCurrentStep?: (step: PipelineProgressEvent['step']) => void,
-    setIsPipelineDone?: (done: boolean) => void,
     maxDepth?: number,
   ) {
     // If a full run is already in-flight for this URL, return the existing promise
@@ -290,25 +278,25 @@ export class PipelineService {
 
       try {
         if (perStepProgress) perStepProgress('initializing', { step: 'initializing', status: 'start' });
-        if (setCurrentStep) setCurrentStep('initializing');
-        results.initialize = await this.adminInitialize(url, dataFolder, maxDepth, handle('initializing'), timeoutMs, setCurrentStep);
+        // if (setCurrentStep) setCurrentStep('initializing');
+        results.initialize = await this.adminInitialize(url, dataFolder, maxDepth, handle('initializing'), timeoutMs);
         
         if (perStepProgress) perStepProgress('crawling', { step: 'crawling', status: 'start' });
-        if (setCurrentStep) setCurrentStep('crawling');
-        results.crawling = await this.adminCrawling(url, dataFolder, maxDepth, handle('crawling'), timeoutMs, setCurrentStep);
+        // if (setCurrentStep) setCurrentStep('crawling');
+        results.crawling = await this.adminCrawling(url, dataFolder, maxDepth, handle('crawling'), timeoutMs);
         
         if (perStepProgress) perStepProgress('embedding', { step: 'embedding', status: 'start' });
-        if (setCurrentStep) setCurrentStep('embedding');
-        results.embedding = await this.adminEmbedding(url, dataFolder, maxDepth, handle('embedding'), timeoutMs, setCurrentStep);
+        // if (setCurrentStep) setCurrentStep('embedding');
+        results.embedding = await this.adminEmbedding(url, dataFolder, maxDepth, handle('embedding'), timeoutMs);
         
         if (perStepProgress) perStepProgress('indexing', { step: 'indexing', status: 'start' });
-        if (setCurrentStep) setCurrentStep('indexing');
-        results.indexing = await this.adminIndexing(url, dataFolder, maxDepth, handle('indexing'), timeoutMs, setCurrentStep);
+        // if (setCurrentStep) setCurrentStep('indexing');
+        results.indexing = await this.adminIndexing(url, dataFolder, maxDepth, handle('indexing'), timeoutMs);
 
         // After all steps completed successfully, emit a final pipeline done event
         if (perStepProgress) perStepProgress('pipeline', { step: 'pipeline', status: 'done' });
-        if (setCurrentStep) setCurrentStep('pipeline');
-        if (setIsPipelineDone) setIsPipelineDone(true);
+        // if (setCurrentStep) setCurrentStep('pipeline');
+        // if (setIsPipelineDone) setIsPipelineDone(true);
         return results;
       } catch (err: any) {
         // In case any step failed, emit a pipeline failed event for consumers

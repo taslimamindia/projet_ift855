@@ -18,7 +18,7 @@ const GovGnChat: React.FC = () => {
       </p>
 
       <div className={styles.chatBox}>
-        <ChatInterface url={""} suggestions={suggestions} maxDepth={250} />
+        <ChatInterface url={""} suggestions={suggestions} />
       </div>
     </div>
   );

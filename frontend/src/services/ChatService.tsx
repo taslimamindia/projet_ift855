@@ -13,11 +13,7 @@ export async function sendQueryToBackend(payload: ChatRequestPayload): Promise<C
     (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_BACKEND_API_URL) ||
     (globalThis as any).process?.env?.REACT_APP_BACKEND_API_URL ||
     'http://localhost:8000';
-
-    const backendUrl = baseUrl + apiUrl;
-
-  console.log('Envoi de la requête au backend:', backendUrl, payload);
-
+  const backendUrl = baseUrl + apiUrl;
   const response = await fetch(backendUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

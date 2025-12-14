@@ -19,14 +19,29 @@ const CustomChat: React.FC = () => {
   const [pipelineFailed, setPipelineFailed] = useState(false);
   const [currentStep, setCurrentStep] = useState<string>('initializing');
   const [status, setStatus] = useState<string>('start');
+  const [value, setValue] = useState<number | undefined>(0);
 
   const handleStep = useCallback((_stepLabel: string, update: PipelineProgressEvent) => {
 
-    // Use currentStep when backend signals start of a step
-
     if (update.status === 'start') {
       setCurrentStep(update.step);
-      setStatus(update.status);
+      setStatus('start');
+      setValue(0);
+    }
+
+    if ((update.status === 'in_progress') && (typeof update.value === 'number')) {
+        setStatus('in_progress');
+        setValue(update.value);
+    }
+
+    if (update.status === 'done') {
+      setStatus('done');
+      setValue(undefined);
+    }
+
+    if (update.status === 'failed') {
+      setStatus('failed');
+      setValue(undefined);
     }
 
     if (update.step === 'pipeline' && update.status === 'done') {
@@ -36,8 +51,6 @@ const CustomChat: React.FC = () => {
       navigate('/');
     }
   }, [navigate]);
-
-  // Run pipeline when url changes
 
   const startedRef = React.useRef(false);
 
@@ -58,12 +71,9 @@ const CustomChat: React.FC = () => {
         await svc.runFullPipeline(
           url,
           (stepLabel: string, data: PipelineProgressEvent) => {
-            if (!mounted) return;
             handleStep(stepLabel, data);
           },
           undefined,
-          setCurrentStep,
-          setPipelineDone,
           maxDepth,
         );
 
@@ -72,9 +82,9 @@ const CustomChat: React.FC = () => {
         setPipelineDone(true);
         setStatus('done');
         setCurrentStep('pipeline');
+        setValue(undefined);
       } catch (err: any) {
         if (!mounted) return;
-        console.error('Pipeline failed:', err);
         setPipelineFailed(true);
         setStatus('failed');
         navigate('/');
@@ -96,11 +106,11 @@ const CustomChat: React.FC = () => {
 
       <div className={styles.chatBox}>
         {!pipelineDone && !pipelineFailed && (
-          <PipelineProgess currentStep={currentStep} status={status} />
+          <PipelineProgess currentStep={currentStep} status={status} value={value} />
         )}
 
         {pipelineDone && !pipelineFailed && (
-          <ChatInterface url={url} suggestions={[]} maxDepth={maxDepth} />
+          <ChatInterface url={url} suggestions={[]}/>
         )}
       </div>
     </div>

@@ -29,24 +29,20 @@ logger = logging.getLogger(__name__)
 
 
 def run_initializing(url, folder):
-    task = Task.init(project_name="RAG_Pipeline", task_name="initializing", reuse_last_task_id=False)
-    task.connect({"url": url})
-    
     try:
         domain = extract_domain(url)
         model = create_model(settings)
+        
         if model.aws_file.create_folder_in_aws(folder, False):
             meta_data = {"domain": domain, "url": url, "aws_folder_path": folder}
             model.aws_file.upload_file_in_aws("metadata", meta_data, type_file="json")
-            logger.info("Initializing done")
+            sys.exit(0)
         else:
             logger.error("Initializing failed")
-            sys.exit(1)
+        sys.exit(1)
     except Exception as e:
         logger.exception(f"Error in initializing: {e}")
         sys.exit(1)
-    finally:
-        task.close()
 
 def run_crawling(url, folder, max_depth):
     task = Task.init(project_name="RAG_Pipeline", task_name="crawling", reuse_last_task_id=False)
@@ -81,23 +77,16 @@ def run_embedding(url, folder):
         model = create_model(settings)
         model.aws_file.create_folder_in_aws(folder, recreate=False)
         
-        # Download crawled data
-        logger.info("Downloading crawled data...")
         model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
         
-        logger.info("Chunking...")
         model.embeddings.chunking()
         model.aws_file.upload_file_in_aws("crawled_chunks", model.data.chunks, type_file="json")
         
-        logger.info("Processing sources...")
         model.embeddings.flat_chunks_and_sources()
         model.aws_file.upload_file_in_aws("crawled_sources", model.data.sources, type_file="json")
         
-        logger.info("Generating embeddings...")
         model.embeddings.fireworks_embeddings()
         model.aws_file.upload_file_in_aws("embeddings", model.data.embeddings, type_file="npy")
-        
-        logger.info("Embedding done")
     except Exception as e:
         logger.exception(f"Error in embedding: {e}")
         sys.exit(1)
@@ -105,26 +94,18 @@ def run_embedding(url, folder):
         task.close()
 
 def run_indexing(url, folder):
-    task = Task.init(project_name="RAG_Pipeline", task_name="indexing", reuse_last_task_id=False)
-    task.connect({"url": url})
-    
     try:
         model = create_model(settings)
         model.aws_file.create_folder_in_aws(folder, recreate=False)
         
-        logger.info("Downloading embeddings and sources...")
         model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
         model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
         
-        logger.info("Creating FAISS index...")
         model.faiss.create_faiss_index()
-        
-        logger.info("Indexing done")
+        sys.exit(0)
     except Exception as e:
         logger.exception(f"Error in indexing: {e}")
         sys.exit(1)
-    finally:
-        task.close()
 
 
 if __name__ == "__main__":
