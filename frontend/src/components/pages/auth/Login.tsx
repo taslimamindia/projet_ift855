@@ -11,6 +11,7 @@ const Login = () => {
 
 const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    localStorage.removeItem('isAuthenticated');
     
     const adminPassword =
         (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_ADMIN_PASSWORD) ||
@@ -20,6 +21,7 @@ const handleSubmit = (e: React.FormEvent) => {
         localStorage.setItem('isAuthenticated', 'true');
         navigate(from, { replace: true });
     } else {
+        localStorage.removeItem('isAuthenticated');
         setError('Mot de passe incorrect');
     }
 };
