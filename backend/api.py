@@ -19,6 +19,13 @@ from models.RAG import LangChainRAGAgent
 from load_settings import settings
 import psutil
 
+# Fix Windows asyncio subprocess support: use Selector event loop on Windows
+if sys.platform.startswith("win"):
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
+
 
 _uvicorn_logger = logging.getLogger("uvicorn.error")
 logger = _uvicorn_logger if _uvicorn_logger.handlers else logging.getLogger(__name__)
@@ -65,21 +72,6 @@ class DataRequest:
     max_depth: int = 200
     data_folder: str = None
 
-def run_clearml_step(step: str, url: str, folder: str, extra_args: list = None):
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    script_path = os.path.join(current_dir, "clearml_pipeline.py")
-    
-    cmd_args = ["--step", step, "--url", url, "--folder", folder]
-    if extra_args:
-        cmd_args.extend(extra_args)
-        
-    return subprocess.run(
-        [sys.executable, script_path] + cmd_args,
-        capture_output=True,
-        text=True,
-        encoding='utf-8'
-    )
-
 def create_model(settings: Settings):
     model = Model()
 
@@ -106,10 +98,7 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
 
     model = create_model(settings)
-    logger.info("Creating default model and loading data from AWS S3 folder '{}'.".format(settings.default_folder))
-    logger.info("AWS S3 Base Prefix: {}".format(model.aws_file.base_prefix))
     response = model.aws_file.create_folder_in_aws(settings.default_folder, recreate=False)
-    logger.info("AWS S3 folder creation/check response: {}".format(model.aws_file.base_prefix))
     if response:
         model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
         model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
@@ -123,7 +112,6 @@ async def lifespan(app: FastAPI):
 
     app.state.model = model
     app.state.models = {}
-    logger.info("Default model initialized and ready.")
     
     yield
     
@@ -142,7 +130,6 @@ if settings.env.lower() == "env":
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    logger.info("CORS middleware added for development environment.")
 elif settings.env.lower() == "gcloudprod":
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
@@ -155,9 +142,9 @@ elif settings.env.lower() == "gcloudprod":
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    logger.info("CORS middleware added for gcloudprod environment.")
 else:
-    logger.info("Production environment detected; CORS middleware not added.")
+    logger.info("CORS middleware not added for production environment.")
+
 
 def extract_domain(url: str) -> str:
     """Extract the domain from a given URL.
@@ -189,17 +176,110 @@ def extract_aws_folder_path(url: str) -> str:
     
     return name.lower()
 
-def get_aws_folder_path(data: dict, url: str) -> str:
-    if data.get("data_folder", None) == settings.default_folder:
+def get_aws_folder_path(data: dict | DataRequest, url: str) -> str:
+    if (isinstance(data, DataRequest) and (data.data_folder == settings.default_folder)) or \
+       (isinstance(data, dict) and (data.get("data_folder", None) == settings.default_folder)):
         aws_folder_path = settings.default_folder
     else:
         aws_folder_path = extract_aws_folder_path(url)
     return aws_folder_path
 
+def get_clearml_step_command(step: str, url: str, folder: str, extra_args: list = None):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    script_path = os.path.join(current_dir, "clearml_pipeline.py")
+    
+    cmd_args = [sys.executable, script_path, "--step", step, "--url", url, "--folder", folder]
+    if extra_args:
+        cmd_args.extend(extra_args)
+    return cmd_args
+
+async def _process_and_send_line(line, ws: WebSocket, step_name: str, channel: str) -> bool:
+    """Process a raw line from a stream and send a structured message via WebSocket.
+
+    Handles both bytes and str input, extracts progress percentage if present,
+    and sends an appropriate JSON payload. Returns False if a RuntimeError occurs
+    (e.g., WebSocket closed) so callers can break their read loop.
+    """
+    try:
+        if isinstance(line, bytes):
+            decoded_line = line.decode('utf-8').strip()
+        else:
+            decoded_line = str(line).strip()
+
+        percentage = None
+        if "PROGRESS:" in decoded_line:
+            match = re.search(r"PROGRESS:\s*(\d+)%", decoded_line)
+            if match:
+                percentage = int(match.group(1))
+
+        if percentage is not None:
+            msg = {"step": step_name, "status": "in_progress", "value": percentage}
+        else:
+            msg = {"step": step_name, "status": "log", "channel": channel, "message": decoded_line}
+        await ws.send_json(msg)
+        return True
+    except RuntimeError:
+        return False
+
+async def stream_subprocess_output(cmd_args, ws: WebSocket, step_name: str):
+    """Start a subprocess and stream its stdout/stderr to the WebSocket.
+
+    Uses asyncio.create_subprocess_exec on non-Windows platforms.
+    On Windows, falls back to subprocess.Popen with asyncio.to_thread to avoid
+    NotImplementedError from ProactorEventLoop subprocess transport.
+    """
+
+    if not sys.platform.startswith("win"):
+        process = await asyncio.create_subprocess_exec(
+            *cmd_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        async def read_stream(stream, channel):
+            while True:
+                line = await stream.readline()
+                if line:
+                    should_continue = await _process_and_send_line(line, ws, step_name, channel)
+                    if not should_continue:
+                        break
+                else:
+                    break
+
+        await asyncio.gather(
+            read_stream(process.stdout, "stdout"),
+            read_stream(process.stderr, "stderr")
+        )
+        return await process.wait()
+
+    # Windows fallback: use blocking Popen and read lines in a thread
+    process = subprocess.Popen(
+        cmd_args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding='utf-8'
+    )
+
+    async def read_fp(fp, channel):
+        while True:
+            line = await asyncio.to_thread(fp.readline)
+            if line:
+                should_continue = await _process_and_send_line(line, ws, step_name, channel)
+                if not should_continue:
+                    break
+            else:
+                break
+
+    await asyncio.gather(
+        read_fp(process.stdout, "stdout"),
+        read_fp(process.stderr, "stderr")
+    )
+    return await asyncio.to_thread(process.wait)
+
 @app.get("/")
 def root():
     return {"message": "API is running. Visit /docs for API documentation."}
-
 
 @app.get("/admin/api/config")
 def admin_get_config():
@@ -235,9 +315,9 @@ async def memory_ws(websocket: WebSocket):
             await websocket.send_json(data)
             await asyncio.sleep(1)
     except WebSocketDisconnect:
-        print("Client disconnected from memory monitor")
+        logger.info("Memory monitor WebSocket disconnected.")
     except Exception as e:
-        print(f"Error in memory monitor: {e}")
+        logger.error(f"Error in memory monitor: {e}")
         try:
             await websocket.close()
         except RuntimeError:
@@ -256,29 +336,18 @@ async def websocket_initialization(ws: WebSocket, data: dict = None):
         return
     
     aws_folder_path = get_aws_folder_path(data, url)
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "initializing", url, aws_folder_path, None)
-    if result.returncode == 0:
+    
+    cmd_args = get_clearml_step_command("initializing", url, aws_folder_path, None)
+    returncode = await stream_subprocess_output(cmd_args, ws, "initializing")
+
+    if returncode == 0:
         model = create_model(settings)
         model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
         app.state.models[aws_folder_path] = model
         await ws.send_json({"step": "initializing", "status": "done"})
     else:
-        logger.error(f"Initializing failed: {result.stderr}")
-        await ws.send_json({"step": "initializing", "status": "failed", "error": result.stderr})
+        await ws.send_json({"step": "initializing", "status": "failed", "error": f"Process exited with code {returncode}"})
     await ws.close()
-
-@app.websocket("/api/pipeline/initializing")
-async def guest_websocket_initialization(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_initialization(ws, data)
-
-@app.websocket("/admin/api/pipeline/initializing")
-async def admin_websocket_initialization(ws: WebSocket):
-    await websocket_initialization(ws)
-
 
 async def websocket_crawling(ws: WebSocket, data: dict = None):
     if data is None:
@@ -294,30 +363,17 @@ async def websocket_crawling(ws: WebSocket, data: dict = None):
     
     aws_folder_path = get_aws_folder_path(data, url)
     
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "crawling", url, aws_folder_path, ["--max_depth", str(max_depth)])
+    cmd_args = get_clearml_step_command("crawling", url, aws_folder_path, ["--max_depth", str(max_depth)])
+    returncode = await stream_subprocess_output(cmd_args, ws, "crawling")
 
-    if result.returncode == 0:
+    if returncode == 0:
         model = app.state.models.get(aws_folder_path, None)
         if model:
             model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
         await ws.send_json({"step": "crawling", "status": "done"})
     else:
-        logger.error(f"Crawling failed: {result.stderr}")
-        await ws.send_json({"step": "crawling", "status": "failed", "error": result.stderr})
+        await ws.send_json({"step": "crawling", "status": "failed", "error": f"Process exited with code {returncode}"})
     await ws.close()
-
-@app.websocket("/api/pipeline/crawling")
-async def guest_websocket_crawling(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_crawling(ws, data)
-
-@app.websocket("/admin/api/pipeline/crawling")
-async def admin_websocket_crawling(ws: WebSocket):
-    await websocket_crawling(ws)
-
 
 async def websocket_embedding(ws: WebSocket, data: dict = None):
     if data is None:
@@ -332,10 +388,10 @@ async def websocket_embedding(ws: WebSocket, data: dict = None):
 
     aws_folder_path = get_aws_folder_path(data, url)
     
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, run_clearml_step, "embedding", url, aws_folder_path, None)
+    cmd_args = get_clearml_step_command("embedding", url, aws_folder_path, None)
+    returncode = await stream_subprocess_output(cmd_args, ws, "embedding")
 
-    if result.returncode == 0:
+    if returncode == 0:
         model = app.state.models.get(aws_folder_path, None)
         if model:
             model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
@@ -343,21 +399,8 @@ async def websocket_embedding(ws: WebSocket, data: dict = None):
             model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
         await ws.send_json({"step": "embedding", "status": "done"})
     else:
-        logger.error(f"Embedding failed: {result.stderr}")
-        await ws.send_json({"step": "embedding", "status": "failed", "error": result.stderr})
+        await ws.send_json({"step": "embedding", "status": "failed", "error": f"Process exited with code {returncode}"})
     await ws.close()
-
-@app.websocket("/api/pipeline/embedding")
-async def guest_websocket_embedding(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_embedding(ws, data)
-
-@app.websocket("/admin/api/pipeline/embedding")
-async def admin_websocket_embedding(ws: WebSocket):
-    await websocket_embedding(ws)
-
 
 async def websocket_indexing(ws: WebSocket, data: dict = None):
     if data is None:
@@ -379,10 +422,43 @@ async def websocket_indexing(ws: WebSocket, data: dict = None):
             model.faiss.create_faiss_index()
         await ws.send_json({"step": "indexing", "status": "done"})
     except Exception as e:
-        logger.error(f"Indexing failed: {str(e)}")
         await ws.send_json({"step": "indexing", "status": "failed", "error": str(e)})
 
     await ws.close()
+
+
+@app.websocket("/api/pipeline/initializing")
+async def guest_websocket_initialization(ws: WebSocket):
+    await ws.accept()
+    data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_initialization(ws, data)
+
+@app.websocket("/admin/api/pipeline/initializing")
+async def admin_websocket_initialization(ws: WebSocket):
+    await websocket_initialization(ws)
+
+@app.websocket("/api/pipeline/crawling")
+async def guest_websocket_crawling(ws: WebSocket):
+    await ws.accept()
+    data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_crawling(ws, data)
+
+@app.websocket("/admin/api/pipeline/crawling")
+async def admin_websocket_crawling(ws: WebSocket):
+    await websocket_crawling(ws)
+
+@app.websocket("/api/pipeline/embedding")
+async def guest_websocket_embedding(ws: WebSocket):
+    await ws.accept()
+    data = await ws.receive_json()
+    data["data_folder"] = None
+    await websocket_embedding(ws, data)
+
+@app.websocket("/admin/api/pipeline/embedding")
+async def admin_websocket_embedding(ws: WebSocket):
+    await websocket_embedding(ws)
 
 @app.websocket("/api/pipeline/indexing")
 async def guest_websocket_indexing(ws: WebSocket):
@@ -416,7 +492,8 @@ async def chat_rag(datarequest: DataRequest):
         if not datarequest.url:
             model = app.state.model
         else:
-            aws_folder_path = get_aws_folder_path(datarequest.data_folder, datarequest.url)
+            datarequest.data_folder = None
+            aws_folder_path = get_aws_folder_path(datarequest, datarequest.url)
             model = app.state.models.get(aws_folder_path, None)
             if model is None:
                 raise ValueError(f"No model found for domain extracted from URL: {datarequest.url}")

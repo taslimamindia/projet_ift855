@@ -151,11 +151,14 @@ class Crawling:
 
         urls_in_queue = set([url])
         can_stop = False
-        logger.info(f"Starting crawl at: {url} up to {max_depth}")
         while len(urls_in_queue) and len(self.texts) <= max_depth:
             current_url = urls_in_queue.pop()
-            if len(self.texts) % 50 == 0:
-                logger.info(f"Current depth: {len(self.texts)}, URLs in queue: {len(urls_in_queue)}")
+
+            if len(self.texts) % 10 == 0:
+                # Log progress for frontend tracking
+                progress_percent = int((len(self.texts) / max_depth) * 100)
+                logger.info(f"PROGRESS: {progress_percent}% - Crawled {len(self.texts)}/{max_depth} pages")
+            
             try:
                 self.texts[current_url] = extract_function(current_url, params)
                 self.visited.add(current_url)
@@ -168,7 +171,6 @@ class Crawling:
                     urls_in_queue.update([new_url for new_url in new_urls if new_url not in self.visited])
 
             except Exception:
-                logger.exception(f"Error crawling URL: {current_url}")
                 self.visited.add(current_url)
     
 
@@ -179,27 +181,31 @@ class Crawling:
             url (str): url from user request.
         """
 
-        self.visited = set()
-        self.texts = {}
-        self.rp = self.scrape_autorization(url)
+        try:
+            self.visited = set()
+            self.texts = {}
+            self.rp = self.scrape_autorization(url)
 
-        if not self.can_scrape(self.rp, url):
-            raise ValueError("Désolé, conformément aux règles de navigation de ce site, l’exploration par les robots n’est pas autorisée !!!")
-        
-        if mode_search:
-            self.extract_text(url, params=params)
-            form = self.soup.find("form")
-            if form:
-                url = form.get("action")
-            else:
-                params = None
-        
-        ext = tldextract.extract(url)
-        self.recursive_crawl(
-            url,
-            domain=f"{ext.domain}.{ext.suffix}",
-            extract_function=self.extract_text,
-            max_depth=max_depth,
-            params=params
-        )
-        self.texts = self.clean_documents(self.texts)
+            if not self.can_scrape(self.rp, url):
+                raise ValueError("Désolé, conformément aux règles de navigation de ce site, l’exploration par les robots n’est pas autorisée !!!")
+            
+            if mode_search:
+                self.extract_text(url, params=params)
+                form = self.soup.find("form")
+                if form:
+                    url = form.get("action")
+                else:
+                    params = None
+            
+            ext = tldextract.extract(url)
+            self.recursive_crawl(
+                url,
+                domain=f"{ext.domain}.{ext.suffix}",
+                extract_function=self.extract_text,
+                max_depth=max_depth,
+                params=params
+            )
+            self.texts = self.clean_documents(self.texts)
+        except Exception as e:
+            raise e
+    

@@ -101,7 +101,12 @@ class Embeddings:
         logger.debug(f"chunks sizes: {[len(c) for c in chunks]}")
 
         with Fireworks(api_key=self.data.fireworks_api_key) as fw:
-            for chunk in tqdm(chunks, desc="Generating embeddings", colour="green"):
+            total_chunks = len(chunks)
+            for i, chunk in enumerate(tqdm(chunks, desc="Generating embeddings", colour="green")):
+                # Log progress for frontend tracking
+                progress_percent = int(((i + 1) / total_chunks) * 100)
+                logger.info(f"PROGRESS: {progress_percent}% - Embedding batch {i+1}/{total_chunks}")
+                
                 try:
                     response = fw.embeddings.create(
                         model=self.model_embedding_name,
