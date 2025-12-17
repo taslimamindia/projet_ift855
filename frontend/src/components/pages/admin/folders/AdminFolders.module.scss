@@ -1,0 +1,34 @@
+.container {
+  padding: 24px;
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.list {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.error {
+  color: #b00020;
+}
+
+.success {
+  color: #2e7d32;
+}
