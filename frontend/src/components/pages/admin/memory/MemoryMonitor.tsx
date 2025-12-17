@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import styles from './MemoryMonitor.module.scss';
+import { AdminService } from '../../../../services/AdminService';
 
 interface MemoryStats {
   rss_GB: number;
@@ -21,15 +22,9 @@ const MemoryMonitor = () => {
   const wsRef = useRef<WebSocket | null>(null);
 
   const connect = useCallback(() => {
-    const getWebSocketUrl = () => {
-      const baseUrl = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
-      const wsUrl = baseUrl.replace(/^http/, 'ws').replace(/^https/, 'wss');
-      return `${wsUrl}/ws/memory`;
-    };
-
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const ws = new WebSocket(getWebSocketUrl());
+    const ws = new WebSocket(AdminService.getMemoryWsUrl());
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -95,17 +90,17 @@ const MemoryMonitor = () => {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Moniteur de Ressources Système</h2>
+        <h2 className={styles.title}>System Resource Monitor</h2>
         <button 
           className={`${styles.button} ${shouldConnect ? styles.disconnectBtn : styles.connectBtn}`}
           onClick={toggleConnection}
         >
-          {shouldConnect ? 'Déconnecter' : 'Connecter'}
+          {shouldConnect ? 'Disconnect' : 'Connect'}
         </button>
       </div>
       
       <div className={`${styles.status} ${connected ? styles.connected : styles.disconnected}`}>
-        {connected ? 'Connecté au serveur' : 'Déconnecté'}
+        {connected ? 'Connected to server' : 'Disconnected'}
       </div>
 
       {stats && (
@@ -120,18 +115,18 @@ const MemoryMonitor = () => {
             </div>
 
             <div className={styles.card}>
-              <div className={styles.label}>RAM Utilisée (Système)</div>
+              <div className={styles.label}>Used RAM (System)</div>
               <div className={styles.value}>
                 {stats.used_RAM_GB}
                 <span className={styles.unit}>GB</span>
               </div>
               <div className={styles.label} style={{marginTop: '0.5rem'}}>
-                sur {stats.total_RAM_GB} GB ({stats.ram_percent}%)
+                of {stats.total_RAM_GB} GB ({stats.ram_percent}%)
               </div>
             </div>
 
             <div className={styles.card}>
-              <div className={styles.label}>Mémoire Physique (Process)</div>
+              <div className={styles.label}>Physical Memory (Process)</div>
               <div className={styles.value}>
                 {stats.rss_GB}
                 <span className={styles.unit}>GB</span>
@@ -139,7 +134,7 @@ const MemoryMonitor = () => {
             </div>
 
             <div className={styles.card}>
-              <div className={styles.label}>Mémoire Virtuelle (Process)</div>
+              <div className={styles.label}>Virtual Memory (Process)</div>
               <div className={styles.value}>
                 {stats.vms_GB}
                 <span className={styles.unit}>GB</span>
@@ -147,7 +142,7 @@ const MemoryMonitor = () => {
             </div>
 
             <div className={styles.card}>
-              <div className={styles.label}>Threads Actifs</div>
+              <div className={styles.label}>Active Threads</div>
               <div className={styles.value}>
                 {stats.threads}
               </div>
@@ -156,7 +151,7 @@ const MemoryMonitor = () => {
 
           <div className={styles.chartsGrid}>
             <div className={styles.chartCard}>
-              <h3>Processus en cours (Threads)</h3>
+              <h3>Threads over time</h3>
               <div className={styles.chartContainer}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={history}>
@@ -172,7 +167,7 @@ const MemoryMonitor = () => {
             </div>
 
             <div className={styles.chartCard}>
-              <h3>Utilisation Mémoire (GB)</h3>
+              <h3>Memory Usage (GB)</h3>
               <div className={styles.chartContainer}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={history}>
@@ -181,8 +176,8 @@ const MemoryMonitor = () => {
                     <YAxis ticks={memoryTicks} domain={[0, 'auto']} />
                     <Tooltip />
                     <Legend />
-                    <Line type="monotone" dataKey="rss_GB" name="RSS (Physique)" stroke="#2bea21ff" dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="vms_GB" name="VMS (Virtuelle)" stroke="#6958ffff" dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="rss_GB" name="RSS (Physical)" stroke="#2bea21ff" dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="vms_GB" name="VMS (Virtual)" stroke="#6958ffff" dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
