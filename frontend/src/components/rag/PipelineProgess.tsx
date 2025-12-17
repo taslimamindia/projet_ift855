@@ -52,7 +52,7 @@ export const PipelineProgess: React.FC<PipelineProgessProps> = ({ currentStep, s
           </div>
           <div className="m-2">
             {label} {"en cours..."}
-            {(currentStep === "crawling" || currentStep === "embedding") && typeof value === "number" ? (
+            {(status === "in_progress") && (currentStep === "crawling" || currentStep === "embedding") && typeof value === "number" ? (
               <div
                 className="ms-3 pipeline-progress"
                 aria-label="Progression"
