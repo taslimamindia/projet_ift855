@@ -308,3 +308,57 @@ class AWSFileManager(FileManager):
         except Exception as e:
             logger.exception(f"Unexpected error downloading file: {e}")
             raise
+
+    def list_folders_in_aws(self, path: str) -> list[str]:
+        """
+        List "folders" (common prefixes) in S3 under the given prefix.
+
+        Args:
+            path (str): folder to list (e.g. 'documents/' or '').
+        Returns:
+            list[str]: List of folder names (without base_prefix).
+        """
+
+        try:
+            paginator = self.s3.get_paginator('list_objects_v2')
+            prefixes = set()
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=path, Delimiter='/'):
+                for prefix in page.get('CommonPrefixes', []):
+                    folder_name = prefix.get('Prefix')
+                    if folder_name:
+                        # Remove base_prefix and trailing slash
+                        relative_name = folder_name[len(path):].rstrip('/')
+                        prefixes.add(relative_name)
+
+            return sorted(list(prefixes))
+        except ClientError as e:
+            logger.error(f"AWS error listing folders under '{path}': {e.response.get('Error', {}).get('Message', str(e))}")
+            raise
+        except Exception as e:
+            logger.exception(f"Unexpected error listing folders under '{path}': {e}")
+            raise
+    
+    def delete_folders_in_aws(self, prefix:str, folders: list[str]) -> bool:
+        """
+        Delete specified "folders" (prefixes) in S3.
+
+        Args:
+            prefix (str): base prefix under which folders are located (e.g. 'documents/').
+            folders (list[str]): list of folder names to delete (e.g. ['folder1', 'folder2']).
+        Returns:
+            bool: True if all folders were deleted successfully, False otherwise.
+        """
+
+        try:
+            for folder in folders:
+                path = prefix.rstrip('/') + '/' + folder.rstrip('/') + '/'
+                print(f"Deleting folder in S3: {path}")
+                # Delete only the S3 "folder marker" object (zero-byte key), keep contents intact
+                self.s3.delete_object(Bucket=self.bucket_name, Key=path)
+            return True
+        except ClientError as e:
+            logger.error(f"AWS error deleting folders under '{prefix}': {e.response.get('Error', {}).get('Message', str(e))}")
+            return False
+        except Exception as e:
+            logger.exception(f"Unexpected error deleting folders under '{prefix}': {e}")
+            return False   

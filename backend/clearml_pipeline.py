@@ -70,8 +70,8 @@ def run_crawling(url, folder, max_depth):
         task.close()
 
 def run_embedding(url, folder):
-    task = Task.init(project_name="RAG_Pipeline", task_name="embedding", reuse_last_task_id=False)
-    task.connect({"url": url})
+    # task = Task.init(project_name="RAG_Pipeline", task_name="embedding", reuse_last_task_id=False)
+    # task.connect({"url": url})
     
     try:
         model = create_model(settings)
@@ -87,11 +87,12 @@ def run_embedding(url, folder):
         
         model.embeddings.fireworks_embeddings()
         model.aws_file.upload_file_in_aws("embeddings", model.data.embeddings, type_file="npy")
+        sys.exit(0)
     except Exception as e:
         logger.exception(f"Error in embedding: {e}")
         sys.exit(1)
-    finally:
-        task.close()
+    # finally:
+    #     task.close()
 
 def run_indexing(url, folder):
     try:
