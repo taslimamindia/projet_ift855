@@ -17,6 +17,10 @@ const AdminHome: React.FC = () => {
                     <h3>Crawler</h3>
                     <p>Lancer un crawl personnalisé (Admin).</p>
                 </Link>
+                <Link to="/admin/folders" className={styles.card}>
+                    <h3>Gestion des dossiers</h3>
+                    <p>Lister et supprimer des dossiers du backend.</p>
+                </Link>
                 {/* Add more admin links here as needed */}
             </div>
         </div>
