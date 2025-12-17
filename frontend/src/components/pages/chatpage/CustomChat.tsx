@@ -69,12 +69,12 @@ const CustomChat: React.FC = () => {
         setCurrentStep('initializing');
 
         await svc.runFullPipeline(
-          url,
           (stepLabel: string, data: PipelineProgressEvent) => {
             handleStep(stepLabel, data);
           },
-          undefined,
+          url,
           maxDepth,
+          undefined,
         );
 
         if (!mounted) return;
