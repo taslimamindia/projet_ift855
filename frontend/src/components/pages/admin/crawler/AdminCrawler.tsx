@@ -3,6 +3,7 @@ import styles from './AdminCrawler.module.scss';
 import { PipelineService } from '../../../../services/PipelineService';
 import type { PipelineProgressEvent } from '../../../../services/PipelineService';
 import PipelineProgess from '../../../rag/PipelineProgess';
+import { AdminService } from '../../../../services/AdminService';
 
 const AdminCrawler: React.FC = () => {
     const [url, setUrl] = useState('');
@@ -19,16 +20,12 @@ const AdminCrawler: React.FC = () => {
     useEffect(() => {
         const fetchConfig = async () => {
             try {
-                const baseUrl = (import.meta as any).env?.VITE_BACKEND_API_URL || 'http://localhost:8000';
-                const response = await fetch(`${baseUrl}/admin/api/config`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.default_folder) {
-                        setDataFolder(data.default_folder);
-                    }
+                const data = await AdminService.getConfig();
+                if (data.default_folder) {
+                    setDataFolder(data.default_folder);
                 }
             } catch (error) {
-                console.error("Failed to fetch config:", error);
+                console.error('Failed to fetch config:', error);
             }
         };
         fetchConfig();
@@ -79,19 +76,19 @@ const AdminCrawler: React.FC = () => {
 
         try {
             await svc.runAdminPipeline(
-                url,
-                dataFolder,
                 (stepLabel: string, data: PipelineProgressEvent) => {
                     handleStep(stepLabel, data);
                 },
+                url,
+                dataFolder,
+                max_depth,                
                 undefined,
-                max_depth
             );
         } catch (err: any) {
             console.error('Pipeline failed:', err);
             setPipelineFailed(true);
             setIsProcessing(false);
-            setError(err.message || 'Une erreur est survenue');
+            setError(err.message || 'An error occurred');
         }
     };
 
@@ -100,13 +97,13 @@ const AdminCrawler: React.FC = () => {
             <div className={styles.card}>
                 <h2 className={styles.cardTitle}>Admin Crawler</h2>
                 <p className={styles.cardText}>
-                    Configurez et lancez le pipeline de crawling avec des paramètres administrateur.
+                    Configure and run the crawling pipeline with admin parameters.
                 </p>
 
                 {!isProcessing && !pipelineDone && (
                     <form onSubmit={handleSubmit}>
                         <div className={styles.formGroup}>
-                            <label htmlFor="url" className={styles.label}>URL du site web</label>
+                            <label htmlFor="url" className={styles.label}>Website URL</label>
                             <input
                                 id="url"
                                 type="url"
@@ -125,21 +122,21 @@ const AdminCrawler: React.FC = () => {
                         </div>
 
                         <div className={styles.formGroup}>
-                            <label htmlFor="dataFolder" className={styles.label}>Dossier de données</label>
+                            <label htmlFor="dataFolder" className={styles.label}>Data folder</label>
                             <input
                                 id="dataFolder"
                                 type="text"
-                                placeholder="Nom du dossier pour stocker les données"
+                                placeholder="Folder name to store crawled data"
                                 className={styles.input}
                                 value={dataFolder}
                                 onChange={(e) => setDataFolder(e.target.value)}
                                 required
                             />
-                            <span className={styles.helperText}>Le nom du dossier où les données crawlées seront sauvegardées.</span>
+                            <span className={styles.helperText}>The folder name where crawled data will be saved.</span>
                         </div>
 
                         <div className={styles.formGroup}>
-                            <label htmlFor="maxDepth" className={styles.label}>Profondeur maximale</label>
+                            <label htmlFor="maxDepth" className={styles.label}>Max depth</label>
                             <input
                                 id="maxDepth"
                                 type="number"
@@ -153,22 +150,25 @@ const AdminCrawler: React.FC = () => {
                                     setMaxDepth(v);
                                 }}
                             />
-                            <span className={styles.helperText}>Entre 50 et 1000 pages (défaut: 250)</span>
+                            <span className={styles.helperText}>Between 50 and 1000 pages (default: 250)</span>
                         </div>
 
                         <button type="submit" className={styles.submitButton} disabled={isProcessing}>
-                            Lancer le Pipeline
+                            Run Pipeline
                         </button>
                     </form>
                 )}
 
                 {(isProcessing || pipelineDone || pipelineFailed) && (
                     <div className="mt-4">
-                        <PipelineProgess currentStep={currentStep} status={status} value={value} />
                         
+                        {(!pipelineDone && !pipelineFailed && isProcessing) && (
+                            <PipelineProgess currentStep={currentStep} status={status} value={value} />
+                        )}
+
                         {pipelineDone && (
                             <div className={`${styles.status} ${styles.success}`}>
-                                Pipeline terminé avec succès !
+                                Pipeline completed successfully!
                                 <button 
                                     className={`btn btn-primary mt-3 d-block mx-auto`}
                                     onClick={() => {
@@ -178,14 +178,14 @@ const AdminCrawler: React.FC = () => {
                                         setStatus('start');
                                     }}
                                 >
-                                    Nouveau Crawl
+                                    New Crawl
                                 </button>
                             </div>
                         )}
 
                         {pipelineFailed && (
                             <div className={`${styles.status} ${styles.error}`}>
-                                Erreur: {error}
+                                Error: {error}
                                 <button 
                                     className={`btn btn-secondary mt-3 d-block mx-auto`}
                                     onClick={() => {
@@ -194,7 +194,7 @@ const AdminCrawler: React.FC = () => {
                                         setError(null);
                                     }}
                                 >
-                                    Réessayer
+                                    Retry
                                 </button>
                             </div>
                         )}

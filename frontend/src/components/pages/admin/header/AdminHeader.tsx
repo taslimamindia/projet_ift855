@@ -38,6 +38,16 @@ const AdminHeader: React.FC = () => {
                             Crawler
                         </NavLink>
                     </li>
+                     <li>
+                        <NavLink 
+                            to="/admin/folders" 
+                            className={({ isActive }) => 
+                                `${styles.navLink} ${isActive ? styles.active : ''}`
+                            }
+                        >
+                            Folders
+                        </NavLink>
+                    </li>
                 </ul>
             </nav>
         </div>

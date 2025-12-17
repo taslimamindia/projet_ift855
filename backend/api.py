@@ -18,6 +18,7 @@ from models.LLM import Fireworks_LLM
 from models.RAG import LangChainRAGAgent
 from load_settings import settings
 import psutil
+import time
 
 # Fix Windows asyncio subprocess support: use Selector event loop on Windows
 if sys.platform.startswith("win"):
@@ -93,10 +94,7 @@ def create_model(settings: Settings):
 
     return model
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
-
+def create_default_model(settings: Settings):
     model = create_model(settings)
     response = model.aws_file.create_folder_in_aws(settings.default_folder, recreate=False)
     if response:
@@ -109,8 +107,13 @@ async def lifespan(app: FastAPI):
         model.data.query_language = "french"
     else:
         raise ValueError("Could not initialize default model; check AWS S3 settings and default folder.")
+    return model
 
-    app.state.model = model
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager to initialize and clean up ML models on app startup/shutdown."""
+
+    app.state.model = create_default_model(settings)
     app.state.models = {}
     
     yield
@@ -193,7 +196,88 @@ def get_clearml_step_command(step: str, url: str, folder: str, extra_args: list 
         cmd_args.extend(extra_args)
     return cmd_args
 
-async def _process_and_send_line(line, ws: WebSocket, step_name: str, channel: str) -> bool:
+# --- Pipeline Manager for connection resilience ---
+class PipelineManager:
+    def __init__(self):
+        self.active_connections: dict[str, WebSocket] = {}
+        self.state: dict[str, dict] = {}
+        self.history: dict[str, list[dict]] = {}
+        self.in_progress: dict[str, bool] = {}
+        self.last_activity: dict[str, float] = {}
+
+    async def connect(self, websocket: WebSocket, client_id: str):
+        # Cleanup old/stale clients before registering a new/returning one
+        await self.cleanup_expired()
+        # Endpoint must call websocket.accept() before
+        self.active_connections[client_id] = websocket
+        self.last_activity[client_id] = time.time()
+        # Replay full history in order
+        hist = self.history.get(client_id, [])
+        for msg in hist:
+            await self._send_to(client_id, msg)
+
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+
+    async def _send_to(self, client_id: str, data: dict):
+        ws = self.active_connections.get(client_id)
+        if ws:
+            try:
+                await ws.send_json(data)
+            except (RuntimeError, WebSocketDisconnect, Exception):
+                # Socket dead; attempt close and drop active link but keep history/state
+                try:
+                    await ws.close()
+                except Exception:
+                    pass
+                self.disconnect(client_id)
+
+    async def send_update(self, client_id: str, data: dict):
+        # Persist last state and append to history
+        self.state[client_id] = data
+        self.history.setdefault(client_id, []).append(data)
+        self.last_activity[client_id] = time.time()
+        await self._send_to(client_id, data)
+
+    def start_run(self, client_id: str):
+        # Start a fresh history for a new pipeline run
+        self.history[client_id] = []
+        self.state.pop(client_id, None)
+        self.in_progress[client_id] = True
+        self.last_activity[client_id] = time.time()
+
+    def finish_run(self, client_id: str):
+        # Mark run finished and clear persisted history/state
+        self.in_progress[client_id] = False
+        self.history.pop(client_id, None)
+        self.state.pop(client_id, None)
+        self.last_activity[client_id] = time.time()
+
+    def is_running(self, client_id: str) -> bool:
+        return self.in_progress.get(client_id, False)
+
+    async def cleanup_expired(self, max_age_seconds: int = 24 * 60 * 60):
+        now = time.time()
+        # Consider all known client_ids across maps
+        all_ids = set(self.last_activity.keys()) | set(self.history.keys()) | set(self.state.keys()) | set(self.active_connections.keys()) | set(self.in_progress.keys())
+        for cid in list(all_ids):
+            last = self.last_activity.get(cid, 0)
+            if now - last > max_age_seconds:
+                ws = self.active_connections.pop(cid, None)
+                if ws:
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
+                self.history.pop(cid, None)
+                self.state.pop(cid, None)
+                self.in_progress.pop(cid, None)
+                self.last_activity.pop(cid, None)
+
+pipeline_manager = PipelineManager()
+
+async def _process_and_send_line(line, sender, step_name: str, channel: str) -> bool:
     """Process a raw line from a stream and send a structured message via WebSocket.
 
     Handles both bytes and str input, extracts progress percentage if present,
@@ -216,12 +300,12 @@ async def _process_and_send_line(line, ws: WebSocket, step_name: str, channel: s
             msg = {"step": step_name, "status": "in_progress", "value": percentage}
         else:
             msg = {"step": step_name, "status": "log", "channel": channel, "message": decoded_line}
-        await ws.send_json(msg)
+        await sender(msg)
         return True
     except RuntimeError:
         return False
 
-async def stream_subprocess_output(cmd_args, ws: WebSocket, step_name: str):
+async def stream_subprocess_output(cmd_args, sender, step_name: str):
     """Start a subprocess and stream its stdout/stderr to the WebSocket.
 
     Uses asyncio.create_subprocess_exec on non-Windows platforms.
@@ -240,7 +324,7 @@ async def stream_subprocess_output(cmd_args, ws: WebSocket, step_name: str):
             while True:
                 line = await stream.readline()
                 if line:
-                    should_continue = await _process_and_send_line(line, ws, step_name, channel)
+                    should_continue = await _process_and_send_line(line, sender, step_name, channel)
                     if not should_continue:
                         break
                 else:
@@ -265,7 +349,7 @@ async def stream_subprocess_output(cmd_args, ws: WebSocket, step_name: str):
         while True:
             line = await asyncio.to_thread(fp.readline)
             if line:
-                should_continue = await _process_and_send_line(line, ws, step_name, channel)
+                should_continue = await _process_and_send_line(line, sender, step_name, channel)
                 if not should_continue:
                     break
             else:
@@ -276,6 +360,99 @@ async def stream_subprocess_output(cmd_args, ws: WebSocket, step_name: str):
         read_fp(process.stderr, "stderr")
     )
     return await asyncio.to_thread(process.wait)
+
+async def websocket_initialization(sender, data: dict) -> bool:
+    url = data.get("url", None)
+
+    if not url:
+        await sender({"step": "initializing", "status": "failed", "error": "URL is required"})
+        return False    
+    await sender({"step": "initializing", "status": "start"})
+
+    aws_folder_path = get_aws_folder_path(data, url)
+
+    cmd_args = get_clearml_step_command("initializing", url, aws_folder_path, None)
+    returncode = await stream_subprocess_output(cmd_args, sender, "initializing")
+
+    if returncode == 0:
+        model = create_model(settings)
+        model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
+        app.state.models[aws_folder_path] = model
+        await sender({"step": "initializing", "status": "done"})
+        return True
+    else:
+        await sender({"step": "initializing", "status": "failed", "error": f"Process exited with code {returncode}"})
+        return False
+
+async def websocket_crawling(sender, data: dict) -> bool:
+    max_depth = int(data.get("max_depth", 250))
+
+    url = data.get("url", None)
+    if not url or not max_depth:
+        await sender({"step": "crawling", "status": "failed", "error": "URL and max_depth are required"})
+        return False
+    await sender({"step": "crawling", "status": "start"})
+    
+    aws_folder_path = get_aws_folder_path(data, url)
+
+    cmd_args = get_clearml_step_command("crawling", url, aws_folder_path, ["--max_depth", str(max_depth)])
+    returncode = await stream_subprocess_output(cmd_args, sender, "crawling")
+
+    if returncode == 0:
+        model = app.state.models.get(aws_folder_path, None)
+        if model:
+            model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
+        await sender({"step": "crawling", "status": "done"})
+        return True
+    else:
+        await sender({"step": "crawling", "status": "failed", "error": f"Process exited with code {returncode}"})
+        return False
+
+async def websocket_embedding(sender, data: dict) -> bool:
+    url = data.get("url", None)
+    if not url:
+        await sender({"step": "embedding", "status": "failed", "error": "URL is required"})
+        return False
+    await sender({"step": "embedding", "status": "start"})
+
+    aws_folder_path = get_aws_folder_path(data, url)
+
+    cmd_args = get_clearml_step_command("embedding", url, aws_folder_path, None)
+    returncode = await stream_subprocess_output(cmd_args, sender, "embedding")
+
+    if returncode == 0:
+        model = app.state.models.get(aws_folder_path, None)
+        if model:
+            model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
+            model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
+            model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
+        await sender({"step": "embedding", "status": "done"})
+        return True
+    else:
+        await sender({"step": "embedding", "status": "failed", "error": f"Process exited with code {returncode}"})
+        return False
+
+async def websocket_indexing(sender, data: dict) -> bool:
+    url = data.get("url", None)
+
+    if not url:
+        await sender({"step": "indexing", "status": "failed", "error": "URL is required"})
+        return False
+    await sender({"step": "indexing", "status": "start"})
+
+    try:
+        aws_folder_path = get_aws_folder_path(data, url)
+        model = app.state.models.get(aws_folder_path, None)
+        if model:
+            model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
+            model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
+            model.faiss.create_faiss_index()
+        await sender({"step": "indexing", "status": "done"})
+        return True
+    except Exception as e:
+        await sender({"step": "indexing", "status": "failed", "error": str(e)})
+        return False
+
 
 @app.get("/")
 def root():
@@ -293,7 +470,7 @@ def admin_get_config():
     }
     return config
 
-@app.websocket("/ws/memory")
+@app.websocket("/admin/ws/memory")
 async def memory_ws(websocket: WebSocket):
     await websocket.accept()
     try:
@@ -323,154 +500,110 @@ async def memory_ws(websocket: WebSocket):
         except RuntimeError:
             pass
 
+@app.websocket("/api/pipeline")
+async def guest_websocket_pipeline(ws: WebSocket):
+    await ws.accept()
+    data = await ws.receive_json()
+    # Force guest mode: no explicit data_folder (use default/extracted)
+    data["data_folder"] = None
+    # connection management
+    client_id = data.get("client_id") or (data.get("url") or "guest")
+    await pipeline_manager.connect(ws, client_id)
 
-async def websocket_initialization(ws: WebSocket, data: dict = None):
-    if data is None:
-        await ws.accept()
-        data = await ws.receive_json()
+    async def sender(msg: dict):
+        await pipeline_manager.send_update(client_id, msg)
 
-    url = data.get("url", None)
-    if not url:
-        await ws.send_json({"step": "initializing", "status": "failed", "error": "URL is required"})
-        await ws.close()
-        return
-    
-    aws_folder_path = get_aws_folder_path(data, url)
-    
-    cmd_args = get_clearml_step_command("initializing", url, aws_folder_path, None)
-    returncode = await stream_subprocess_output(cmd_args, ws, "initializing")
+    # If a run is already in progress, just stream history/live updates
+    if not pipeline_manager.is_running(client_id):
+        pipeline_manager.start_run(client_id)
 
-    if returncode == 0:
-        model = create_model(settings)
-        model.aws_file.create_folder_in_aws(aws_folder_path, recreate=False)
-        app.state.models[aws_folder_path] = model
-        await ws.send_json({"step": "initializing", "status": "done"})
+        any_failed = False
+        ok_init = await websocket_initialization(sender, data)
+        if not ok_init:
+            any_failed = True
+        else:
+            ok_crawl = await websocket_crawling(sender, data)
+            if not ok_crawl:
+                any_failed = True
+            else:
+                ok_embed = await websocket_embedding(sender, data)
+                if not ok_embed:
+                    any_failed = True
+                else:
+                    ok_index = await websocket_indexing(sender, data)
+                    if not ok_index:
+                        any_failed = True
+
+        if any_failed:
+            await sender({"step": "pipeline", "status": "failed", "error": "One or more steps failed"})
+        else:
+            await sender({"step": "pipeline", "status": "done"})
+        pipeline_manager.finish_run(client_id)
     else:
-        await ws.send_json({"step": "initializing", "status": "failed", "error": f"Process exited with code {returncode}"})
-    await ws.close()
+        # Wait until current run finishes to keep WS open for live updates
+        try:
+            while pipeline_manager.is_running(client_id):
+                await asyncio.sleep(0.5)
+        except WebSocketDisconnect:
+            pass
 
-async def websocket_crawling(ws: WebSocket, data: dict = None):
-    if data is None:
-        await ws.accept()
-        data = await ws.receive_json()
-    max_depth = int(data.get("max_depth", 250))
-
-    url = data.get("url", None)
-    if not url or not max_depth:
-        await ws.send_json({"step": "crawling", "status": "failed", "error": "URL and max_depth are required"})
-        await ws.close()
-        return
-    
-    aws_folder_path = get_aws_folder_path(data, url)
-    
-    cmd_args = get_clearml_step_command("crawling", url, aws_folder_path, ["--max_depth", str(max_depth)])
-    returncode = await stream_subprocess_output(cmd_args, ws, "crawling")
-
-    if returncode == 0:
-        model = app.state.models.get(aws_folder_path, None)
-        if model:
-            model.data.documents = model.aws_file.download_file_from_aws("crawled_data", type_file="json")
-        await ws.send_json({"step": "crawling", "status": "done"})
-    else:
-        await ws.send_json({"step": "crawling", "status": "failed", "error": f"Process exited with code {returncode}"})
-    await ws.close()
-
-async def websocket_embedding(ws: WebSocket, data: dict = None):
-    if data is None:
-        await ws.accept()
-        data = await ws.receive_json()
-
-    url = data.get("url", None)
-    if not url:
-        await ws.send_json({"step": "embedding", "status": "failed", "error": "URL is required"})
-        await ws.close()
-        return
-
-    aws_folder_path = get_aws_folder_path(data, url)
-    
-    cmd_args = get_clearml_step_command("embedding", url, aws_folder_path, None)
-    returncode = await stream_subprocess_output(cmd_args, ws, "embedding")
-
-    if returncode == 0:
-        model = app.state.models.get(aws_folder_path, None)
-        if model:
-            model.data.chunks = model.aws_file.download_file_from_aws("crawled_chunks", type_file="json")
-            model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
-            model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
-        await ws.send_json({"step": "embedding", "status": "done"})
-    else:
-        await ws.send_json({"step": "embedding", "status": "failed", "error": f"Process exited with code {returncode}"})
-    await ws.close()
-
-async def websocket_indexing(ws: WebSocket, data: dict = None):
-    if data is None:
-        await ws.accept()
-        data = await ws.receive_json()
-
-    url = data.get("url", None)
-    if not url:
-        await ws.send_json({"step": "indexing", "status": "failed", "error": "URL is required"})
-        await ws.close()
-        return
-
+    pipeline_manager.disconnect(client_id)
     try:
-        aws_folder_path = get_aws_folder_path(data, url)
-        model = app.state.models.get(aws_folder_path, None)
-        if model:
-            model.data.embeddings = model.aws_file.download_file_from_aws("embeddings", type_file="npy")
-            model.data.sources = model.aws_file.download_file_from_aws("crawled_sources", type_file="json")
-            model.faiss.create_faiss_index()
-        await ws.send_json({"step": "indexing", "status": "done"})
-    except Exception as e:
-        await ws.send_json({"step": "indexing", "status": "failed", "error": str(e)})
+        await ws.close()
+    except Exception:
+        pass
 
-    await ws.close()
-
-
-@app.websocket("/api/pipeline/initializing")
-async def guest_websocket_initialization(ws: WebSocket):
+@app.websocket("/admin/api/pipeline")
+async def admin_websocket_pipeline(ws: WebSocket):
     await ws.accept()
     data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_initialization(ws, data)
 
-@app.websocket("/admin/api/pipeline/initializing")
-async def admin_websocket_initialization(ws: WebSocket):
-    await websocket_initialization(ws)
+    # Admin: respect provided data_folder, defaulting to settings.default_folder if missing
+    client_id = data.get("client_id") or (data.get("url") or "admin")
+    await pipeline_manager.connect(ws, client_id)
 
-@app.websocket("/api/pipeline/crawling")
-async def guest_websocket_crawling(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_crawling(ws, data)
+    async def sender(msg: dict):
+        await pipeline_manager.send_update(client_id, msg)
 
-@app.websocket("/admin/api/pipeline/crawling")
-async def admin_websocket_crawling(ws: WebSocket):
-    await websocket_crawling(ws)
+    if not pipeline_manager.is_running(client_id):
+        pipeline_manager.start_run(client_id)
 
-@app.websocket("/api/pipeline/embedding")
-async def guest_websocket_embedding(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_embedding(ws, data)
+        any_failed = False
+        ok_init = await websocket_initialization(sender, data)
+        if not ok_init:
+            any_failed = True
+        else:
+            ok_crawl = await websocket_crawling(sender, data)
+            if not ok_crawl:
+                any_failed = True
+            else:
+                ok_embed = await websocket_embedding(sender, data)
+                if not ok_embed:
+                    any_failed = True
+                else:
+                    ok_index = await websocket_indexing(sender, data)
+                    if not ok_index:
+                        any_failed = True
 
-@app.websocket("/admin/api/pipeline/embedding")
-async def admin_websocket_embedding(ws: WebSocket):
-    await websocket_embedding(ws)
+        if any_failed:
+            await sender({"step": "pipeline", "status": "failed", "error": "One or more steps failed"})
+        else:
+            if data.get("data_folder", None) == settings.default_folder:
+                app.state.model = create_default_model(settings)
+            await sender({"step": "pipeline", "status": "done"})
+        pipeline_manager.finish_run(client_id)
+    else:
+        try:
+            while pipeline_manager.is_running(client_id):
+                await asyncio.sleep(0.5)
+        except WebSocketDisconnect:
+            pass
 
-@app.websocket("/api/pipeline/indexing")
-async def guest_websocket_indexing(ws: WebSocket):
-    await ws.accept()
-    data = await ws.receive_json()
-    data["data_folder"] = None
-    await websocket_indexing(ws, data)
-
-@app.websocket("/admin/api/pipeline/indexing")
-async def admin_websocket_indexing(ws: WebSocket):
-    await websocket_indexing(ws)
-
+    pipeline_manager.disconnect(client_id)
+    try:
+        await ws.close()
+    except Exception:
+        pass
 
 @app.post("/api/chat/rag")
 async def chat_rag(datarequest: DataRequest):
@@ -511,3 +644,34 @@ async def chat_rag(datarequest: DataRequest):
     except Exception as e:
         raise e
 
+@dataclass
+class DeleteModelRequest:
+    """Request payload for deleting a domain-specific model.
+
+    Attributes:
+        url (str): The URL used to identify the domain-specific model to delete.
+    """
+    folders: list[str]
+    
+@app.post("/admin/api/folders/delete")
+def delete_folders(folders: list[str]):
+    """Delete specified folders from AWS S3 and unload related models from memory."""
+    print("diallo", folders)
+    try:
+        model = app.state.model
+        if not isinstance(folders, list) or len(folders) == 0:
+            return "No folders specified for deletion."
+        if model.aws_file.delete_folders_in_aws(settings.base_prefix, folders):
+            return "Folders deleted successfully."
+        else:
+            return "Folder deletion failed."
+    except Exception as e:
+        raise e
+
+@app.get("/admin/api/folders/list")
+def list_folders():
+    """List all folders in the AWS S3 bucket used for storing domain data."""
+    model = app.state.model
+    folders = model.aws_file.list_folders_in_aws(settings.base_prefix)
+    folders = [folder for folder in folders if folder != settings.default_folder]
+    return folders
