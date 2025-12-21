@@ -109,6 +109,20 @@ jobs:
             # Create secret if it does not exist
             gcloud secrets create "$SECRET_NAME" --replication-policy="automatic" 2>/dev/null || true
 
+            # Delete all existing, non-destroyed versions before adding a new one
+            EXISTING_VERSIONS=$(gcloud secrets versions list "$SECRET_NAME" \
+              --format="value(name)" \
+              --filter="state!=DESTROYED" 2>/dev/null || true)
+
+            if [ -n "$EXISTING_VERSIONS" ]; then
+              echo "Deleting existing versions for $SECRET_NAME..."
+              echo "$EXISTING_VERSIONS" | awk -F/ '{print $NF}' | while read -r version; do
+                if [ -n "$version" ]; then
+                  gcloud secrets versions destroy "$version" --secret="$SECRET_NAME" --quiet || true
+                fi
+              done
+            fi
+
             # Add new version from stdin to avoid logging the value
             printf "%s" "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file=-
           done
