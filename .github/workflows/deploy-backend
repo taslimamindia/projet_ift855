@@ -1,0 +1,129 @@
+name: Deploy Backend to Lightsail (Strict Secrets)
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [closed]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy and Configure Env
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BACKEND_SSH_HOST }}
+          username: ${{ secrets.BACKEND_SSH_USER }}
+          key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
+          port: 22
+          # Liste exhaustive des variables à transmettre depuis GitHub Secrets 
+          envs: >-
+            ENV
+            FIREWORKS_API_KEY,
+            MODEL_EMBEDDINGS_NAME,
+            MODEL_LLM_NAME,
+            DEPLOYMENT_TYPE,
+            AWS_ACCESS_KEY_ID,
+            AWS_SECRET_ACCESS_KEY,
+            AWS_REGION,
+            AWS_S3_BUCKET_NAME_BACKEND,
+            BASE_PREFIX,
+            CLEARML_WEB_HOST,
+            CLEARML_API_HOST,
+            CLEARML_FILES_HOST,
+            CLEARML_API_ACCESS_KEY,
+            CLEARML_API_SECRET_KEY,
+            DEFAULT_FOLDER
+          script: |
+            # --- GESTION DES ERREURS ---
+            set -e 
+
+            TARGET_DIR="/home/ubuntu/mlops/backend"
+            ROOT_DIR="/home/ubuntu/mlops"
+            TEMP_GIT="/home/ubuntu/mlops/temp_git_clone"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            echo "🚀 Déploiement ciblé du contenu de /backend..."
+
+            # 1. Correction des permissions
+            sudo chown -R ubuntu:ubuntu $ROOT_DIR
+
+            # 2. Utilisation du Sparse Checkout pour ne récupérer que /backend
+            rm -rf $TEMP_GIT && mkdir -p $TEMP_GIT
+            cd $TEMP_GIT
+            git init
+            git remote add origin $REPO_URL
+            git config core.sparseCheckout true
+            echo "backend/" >> .git/info/sparse-checkout
+            
+            git fetch origin main
+            git reset --hard origin/main
+
+            # 3. Injection du CONTENU de backend/ directement dans TARGET_DIR
+            mkdir -p $TARGET_DIR
+            rsync -av --delete $TEMP_GIT/backend/ $TARGET_DIR/
+            rm -rf $TEMP_GIT
+
+            # 4. Génération du fichier .env basé sur les secrets transmis 
+            echo "⚙️  Génération du fichier .env..."
+            cat <<EOF > $TARGET_DIR/.env
+            ENV=$ENV
+            FIREWORKS_API_KEY=$FIREWORKS_API_KEY
+            MODEL_EMBEDDINGS_NAME=$MODEL_EMBEDDINGS_NAME
+            MODEL_LLM_NAME=$MODEL_LLM_NAME
+            DEPLOYMENT_TYPE=$DEPLOYMENT_TYPE
+            AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+            AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+            AWS_REGION=$AWS_REGION
+            AWS_S3_BUCKET_NAME_BACKEND=$AWS_S3_BUCKET_NAME_BACKEND
+            BASE_PREFIX=$BASE_PREFIX
+            CLEARML_WEB_HOST=$CLEARML_WEB_HOST
+            CLEARML_API_HOST=$CLEARML_API_HOST
+            CLEARML_FILES_HOST=$CLEARML_FILES_HOST
+            CLEARML_API_ACCESS_KEY=$CLEARML_API_ACCESS_KEY
+            CLEARML_API_SECRET_KEY=$CLEARML_API_SECRET_KEY
+            DEFAULT_FOLDER=$DEFAULT_FOLDER
+            EOF
+
+            # 5. Mise à jour des dépendances
+            cd $ROOT_DIR
+            source venv/bin/activate
+            pip install -r $TARGET_DIR/requirements.txt
+
+            # 6. Redémarrage et Validation
+            echo "🔄 Redémarrage du service..."
+            sudo systemctl restart fastapi_mlops.service
+            
+            sleep 2
+            if ! sudo systemctl is-active --quiet fastapi_mlops.service; then
+                echo "❌ ERREUR : Le service n'est pas actif."
+                sudo systemctl status fastapi_mlops.service --no-pager
+                exit 1
+            fi
+            echo "✅ Déploiement réussi."
+
+        env:
+          ENV: ${{ secrets.ENV }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          MODEL_EMBEDDINGS_NAME: ${{ secrets.MODEL_EMBEDDINGS_NAME }}
+          MODEL_LLM_NAME: ${{ secrets.MODEL_LLM_NAME }}
+          DEPLOYMENT_TYPE: ${{ secrets.DEPLOYMENT_TYPE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_S3_BUCKET_NAME_BACKEND: ${{ secrets.AWS_S3_BUCKET_NAME_BACKEND }}
+          BASE_PREFIX: ${{ secrets.BASE_PREFIX }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          DEFAULT_FOLDER: ${{ secrets.DEFAULT_FOLDER }}
