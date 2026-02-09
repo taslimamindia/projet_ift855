@@ -26,7 +26,7 @@ jobs:
           port: 22
           # Liste exhaustive des variables à transmettre depuis GitHub Secrets 
           envs: >-
-            ENV
+            ENV,
             FIREWORKS_API_KEY,
             MODEL_EMBEDDINGS_NAME,
             MODEL_LLM_NAME,
