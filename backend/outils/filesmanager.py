@@ -72,10 +72,10 @@ class FileManager:
 ######################### AWS Files Operations ###########################
 class AWSFileManager(FileManager):
     def __init__(self, data:Data, 
-                 aws_s3_bucket_name, aws_access_key_id, 
-                 aws_secret_access_key, 
-                 base_prefix, 
-                 aws_region="ca-central-1"):
+            aws_s3_bucket_name, aws_access_key_id, 
+            aws_secret_access_key, 
+            base_prefix, 
+            aws_region="ca-central-1"):
         super().__init__(data)
         self.s3 = boto3.client(
             "s3",
@@ -338,6 +338,33 @@ class AWSFileManager(FileManager):
             logger.exception(f"Unexpected error listing folders under '{path}': {e}")
             raise
     
+    def _s3_delete_objects_with_prefix(self, prefix: str) -> bool:
+        """Helper method to delete all objects under a given prefix in S3.
+
+        Args:
+            prefix (str): S3 prefix under which to delete objects.
+        Returns:
+            bool: True if deletion succeeded, False otherwise.
+        """
+        try:
+            paginator = self.s3.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
+                objs = page.get('Contents', [])
+                if not objs:
+                    continue
+                delete_keys = [{'Key': o['Key']} for o in objs]
+                # delete_objects accepts up to 1000 objects per call
+                for i in range(0, len(delete_keys), 1000):
+                    chunk = delete_keys[i:i + 1000]
+                    self.s3.delete_objects(Bucket=self.bucket_name, Delete={'Objects': chunk})
+            return True
+        except ClientError as e:
+            logger.error(f"AWS error deleting objects under prefix '{prefix}': {e.response.get('Error', {}).get('Message', str(e))}")
+            return False
+        except Exception as e:
+            logger.exception(f"Unexpected error deleting objects under prefix '{prefix}': {e}")
+            return False
+    
     def delete_folders_in_aws(self, prefix:str, folders: list[str]) -> bool:
         """
         Delete specified "folders" (prefixes) in S3.
@@ -352,9 +379,7 @@ class AWSFileManager(FileManager):
         try:
             for folder in folders:
                 path = prefix.rstrip('/') + '/' + folder.rstrip('/') + '/'
-                print(f"Deleting folder in S3: {path}")
-                # Delete only the S3 "folder marker" object (zero-byte key), keep contents intact
-                self.s3.delete_object(Bucket=self.bucket_name, Key=path)
+                self._s3_delete_objects_with_prefix(path)
             return True
         except ClientError as e:
             logger.error(f"AWS error deleting folders under '{prefix}': {e.response.get('Error', {}).get('Message', str(e))}")

@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-if settings.env.lower() == "env":
+if settings.env.lower() == "env" or settings.env.lower() == "prod":
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
         CORSMiddleware,
