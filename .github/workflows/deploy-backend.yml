@@ -1,12 +1,6 @@
 name: Deploy Backend to Cloud Run
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
-    paths:
-      - 'backend/**'
   workflow_dispatch:
 
 env:
