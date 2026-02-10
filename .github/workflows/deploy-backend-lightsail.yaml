@@ -74,7 +74,7 @@ jobs:
 
             # 4. Génération du fichier .env basé sur les secrets transmis 
             echo "⚙️  Génération du fichier .env..."
-            cat <<EOF > $TARGET_DIR/prod.env
+            cat <<EOF > $TARGET_DIR/.env
             ENV=$ENV
             FIREWORKS_API_KEY=$FIREWORKS_API_KEY
             MODEL_EMBEDDINGS_NAME=$MODEL_EMBEDDINGS_NAME
